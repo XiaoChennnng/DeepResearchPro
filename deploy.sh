@@ -257,6 +257,12 @@ EOF
 configure_nginx() {
     log_info "配置Nginx..."
     
+    # 检查dist目录是否存在
+    if [ ! -d "$INSTALL_DIR/dist" ]; then
+        log_error "错误：前端静态文件目录 $INSTALL_DIR/dist 不存在，请先运行npm run build构建前端"
+        return 1
+    fi
+    
     # 检查配置文件是否存在
     if [ -f "/etc/nginx/sites-available/deepresearch" ]; then
         log_warning "Nginx配置文件已存在，备份原文件..."
@@ -276,6 +282,11 @@ server {
         root $INSTALL_DIR/dist;
         try_files \$uri \$uri/ /index.html;
         index index.html;
+        # 添加适当的缓存控制
+        expires 1h;
+        add_header Cache-Control "public, max-age=3600";
+        # 确保Nginx能访问该目录
+        autoindex off;
     }
 
     # 后端API代理
@@ -285,6 +296,10 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        # 增加超时时间
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
     }
 
     # WebSocket支持
@@ -297,6 +312,16 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+        # WebSocket超时时间
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 3600s;
+    }
+    
+    # 错误页面配置
+    error_page 500 502 503 504 /50x.html;
+    location = /50x.html {
+        root /usr/share/nginx/html;
     }
 }
 EOF
@@ -310,11 +335,27 @@ EOF
         log_info "已禁用Nginx默认站点"
     fi
     
+    # 设置dist目录权限，确保Nginx能访问
+    log_info "设置dist目录权限..."
+    sudo chmod -R 755 "$INSTALL_DIR/dist"
+    # 确保Nginx用户能访问整个路径
+    sudo chmod 755 "$INSTALL_DIR"
+    
     # 测试配置
-    sudo nginx -t
+    log_info "测试Nginx配置..."
+    if ! sudo nginx -t; then
+        log_error "Nginx配置测试失败，请检查配置文件"
+        return 1
+    fi
     
     # 重启Nginx服务
+    log_info "重启Nginx服务..."
     sudo systemctl restart nginx
+    
+    # 检查Nginx服务状态
+    log_info "检查Nginx服务状态..."
+    sudo systemctl status nginx --no-pager
+    
     log_success "Nginx配置完成"
 }
 
