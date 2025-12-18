@@ -266,7 +266,10 @@ configure_nginx() {
     sudo tee /etc/nginx/sites-available/deepresearch > /dev/null << EOF
 server {
     listen 80;
-    server_name localhost;
+    server_name _;
+    
+    # 禁用默认的server_tokens
+    server_tokens off;
 
     # 前端静态文件
     location / {
@@ -298,12 +301,20 @@ server {
 }
 EOF
 
-    # 启用站点
+    # 启用站点并禁用默认站点
     sudo ln -sf /etc/nginx/sites-available/deepresearch /etc/nginx/sites-enabled/
+    
+    # 禁用默认的Nginx站点
+    if [ -f "/etc/nginx/sites-enabled/default" ]; then
+        sudo rm -f /etc/nginx/sites-enabled/default
+        log_info "已禁用Nginx默认站点"
+    fi
     
     # 测试配置
     sudo nginx -t
     
+    # 重启Nginx服务
+    sudo systemctl restart nginx
     log_success "Nginx配置完成"
 }
 
