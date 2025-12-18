@@ -1,0 +1,430 @@
+#!/bin/bash
+
+# DeepResearch Pro 自动化部署脚本
+# 作者：小陈
+# 功能：从远端拉取代码并自动完成配置
+
+set -e  # 遇到错误立即退出
+
+# 颜色定义
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# 日志函数
+log_info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+log_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+log_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# 检查是否以root权限运行
+if [[ $EUID -eq 0 ]]; then
+   log_error "请不要使用root权限运行此脚本"
+   exit 1
+fi
+
+# 默认配置
+DEFAULT_INSTALL_DIR="$HOME/deep-research-pro"
+DEFAULT_BACKEND_PORT=8000
+DEFAULT_FRONTEND_PORT=3000
+
+# 用户可配置的变量
+INSTALL_DIR="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
+BACKEND_PORT="${BACKEND_PORT:-$DEFAULT_BACKEND_PORT}"
+FRONTEND_PORT="${FRONTEND_PORT:-$DEFAULT_FRONTEND_PORT}"
+REPO_URL="${REPO_URL:-"https://github.com/XiaoChennnng/DeepResearchPro.git"}"
+BRANCH="${BRANCH:-"master"}"
+
+# 显示欢迎信息
+echo -e "${BLUE}"
+echo "=================================================="
+echo "     DeepResearch Pro 自动化部署脚本"
+echo "                 小陈出品"
+echo "=================================================="
+echo -e "${NC}"
+
+# 检查命令是否存在
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# 安装系统依赖
+install_system_deps() {
+    log_info "安装系统依赖..."
+    
+    # 检测操作系统
+    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        # Linux
+        if command_exists apt-get; then
+            sudo apt-get update
+            sudo apt-get install -y python3 python3-pip python3-venv nodejs npm git curl nginx
+        elif command_exists yum; then
+            sudo yum update -y
+            sudo yum install -y python3 python3-pip nodejs npm git curl nginx
+        elif command_exists dnf; then
+            sudo dnf update -y
+            sudo dnf install -y python3 python3-pip nodejs npm git curl nginx
+        else
+            log_error "不支持的操作系统包管理器"
+            exit 1
+        fi
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS
+        if ! command_exists brew; then
+            log_error "请先安装Homebrew: https://brew.sh"
+            exit 1
+        fi
+        brew install python node git nginx
+    else
+        log_error "不支持的操作系统"
+        exit 1
+    fi
+    
+    log_success "系统依赖安装完成"
+}
+
+# 克隆或更新代码
+clone_or_update_repo() {
+    log_info "处理代码仓库..."
+    
+    if [ -d "$INSTALL_DIR/.git" ]; then
+        log_info "检测到现有仓库，正在更新..."
+        cd "$INSTALL_DIR"
+        git fetch origin
+        git checkout "$BRANCH"
+        git pull origin "$BRANCH"
+    else
+        log_info "正在克隆仓库..."
+        git clone -b "$BRANCH" "$REPO_URL" "$INSTALL_DIR"
+        cd "$INSTALL_DIR"
+    fi
+    
+    log_success "代码仓库处理完成"
+}
+
+# 配置Python环境
+setup_python_env() {
+    log_info "配置Python环境..."
+    
+    cd "$INSTALL_DIR/backend"
+    
+    # 创建虚拟环境
+    if [ ! -d "venv" ]; then
+        python3 -m venv venv
+    fi
+    
+    # 激活虚拟环境
+    source venv/bin/activate
+    
+    # 升级pip
+    pip install --upgrade pip
+    
+    # 安装依赖
+    pip install -r requirements.txt
+    
+    log_success "Python环境配置完成"
+}
+
+# 配置Node.js环境
+setup_node_env() {
+    log_info "配置Node.js环境..."
+    
+    cd "$INSTALL_DIR"
+    
+    # 安装依赖
+    npm install
+    
+    # 构建前端
+    npm run build
+    
+    log_success "Node.js环境配置完成"
+}
+
+# 创建环境配置文件
+create_env_file() {
+    log_info "创建环境配置文件..."
+    
+    cd "$INSTALL_DIR/backend"
+    
+    if [ ! -f ".env" ]; then
+        cat > .env << EOF
+# DeepResearch Pro 后端配置
+APP_NAME="DeepResearch Pro"
+APP_VERSION="1.0.0"
+DEBUG=false
+HOST="0.0.0.0"
+PORT=$BACKEND_PORT
+
+# 数据库配置
+DATABASE_URL="sqlite+aiosqlite:///./deepresearch.db"
+
+# CORS配置
+CORS_ORIGINS=["http://localhost:$FRONTEND_PORT", "http://127.0.0.1:$FRONTEND_PORT"]
+
+# OpenAI API配置 (请替换为你的API密钥)
+OPENAI_API_KEY="your-openai-api-key-here"
+OPENAI_MODEL="gpt-4"
+OPENAI_BASE_URL="https://api.openai.com/v1"
+
+# 搜索配置
+DUCKDUCKGO_MAX_RESULTS=5
+
+# 日志配置
+LOG_LEVEL="INFO"
+LOG_FILE="logs/app.log"
+EOF
+        log_warning "已创建.env文件，请编辑backend/.env文件配置你的API密钥"
+    else
+        log_warning ".env文件已存在，跳过创建"
+    fi
+}
+
+# 创建systemd服务
+create_systemd_service() {
+    log_info "创建systemd服务..."
+    
+    sudo tee /etc/systemd/system/deepresearch-backend.service > /dev/null << EOF
+[Unit]
+Description=DeepResearch Pro Backend
+After=network.target
+
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=$INSTALL_DIR/backend
+Environment="PATH=$INSTALL_DIR/backend/venv/bin"
+ExecStart=$INSTALL_DIR/backend/venv/bin/python run.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    sudo systemctl daemon-reload
+    log_success "systemd服务创建完成"
+}
+
+# 配置Nginx
+configure_nginx() {
+    log_info "配置Nginx..."
+    
+    # 检查配置文件是否存在
+    if [ -f "/etc/nginx/sites-available/deepresearch" ]; then
+        log_warning "Nginx配置文件已存在，备份原文件..."
+        sudo cp /etc/nginx/sites-available/deepresearch "/etc/nginx/sites-available/deepresearch.backup.$(date +%Y%m%d_%H%M%S)"
+    fi
+    
+    sudo tee /etc/nginx/sites-available/deepresearch > /dev/null << EOF
+server {
+    listen 80;
+    server_name localhost;
+
+    # 前端静态文件
+    location / {
+        root $INSTALL_DIR/dist;
+        try_files \$uri \$uri/ /index.html;
+        index index.html;
+    }
+
+    # 后端API代理
+    location /api {
+        proxy_pass http://localhost:$BACKEND_PORT;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    # WebSocket支持
+    location /ws {
+        proxy_pass http://localhost:$BACKEND_PORT;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+}
+EOF
+
+    # 启用站点
+    sudo ln -sf /etc/nginx/sites-available/deepresearch /etc/nginx/sites-enabled/
+    
+    # 测试配置
+    sudo nginx -t
+    
+    log_success "Nginx配置完成"
+}
+
+# 创建启动脚本
+create_start_script() {
+    log_info "创建启动脚本..."
+    
+    cat > "$INSTALL_DIR/start.sh" << 'EOF'
+#!/bin/bash
+
+# DeepResearch Pro 启动脚本
+
+echo "启动 DeepResearch Pro..."
+
+# 启动后端服务
+echo "启动后端服务..."
+cd backend
+source venv/bin/activate
+python run.py &
+BACKEND_PID=$!
+
+# 等待后端启动
+sleep 5
+
+# 启动前端开发服务器（可选）
+# cd ..
+# npm run dev &
+# FRONTEND_PID=$!
+
+echo "服务启动完成!"
+echo "后端API: http://localhost:8000"
+echo "健康检查: http://localhost:8000/health"
+echo "API文档: http://localhost:8000/docs"
+echo ""
+echo "按 Ctrl+C 停止服务"
+
+# 等待用户中断
+trap "kill $BACKEND_PID; exit" INT
+wait $BACKEND_PID
+EOF
+
+    chmod +x "$INSTALL_DIR/start.sh"
+    log_success "启动脚本创建完成"
+}
+
+# 创建停止脚本
+create_stop_script() {
+    log_info "创建停止脚本..."
+    
+    cat > "$INSTALL_DIR/stop.sh" << 'EOF'
+#!/bin/bash
+
+# DeepResearch Pro 停止脚本
+
+echo "停止 DeepResearch Pro..."
+
+# 停止后端服务
+if pgrep -f "python.*run.py" > /dev/null; then
+    pkill -f "python.*run.py"
+    echo "后端服务已停止"
+else
+    echo "后端服务未运行"
+fi
+
+# 停止前端服务（如果在运行）
+if pgrep -f "npm.*dev" > /dev/null; then
+    pkill -f "npm.*dev"
+    echo "前端服务已停止"
+else
+    echo "前端服务未运行"
+fi
+
+echo "服务已停止"
+EOF
+
+    chmod +x "$INSTALL_DIR/stop.sh"
+    log_success "停止脚本创建完成"
+}
+
+# 显示使用说明
+show_usage() {
+    log_success "部署完成！"
+    echo ""
+    echo "=================================================="
+    echo "使用说明："
+    echo ""
+    echo "1. 配置API密钥："
+    echo "   编辑文件: $INSTALL_DIR/backend/.env"
+    echo "   设置 OPENAI_API_KEY 和你的其他配置"
+    echo ""
+    echo "2. 手动启动："
+    echo "   cd $INSTALL_DIR"
+    echo "   ./start.sh"
+    echo ""
+    echo "3. 使用systemd启动（推荐）："
+    echo "   sudo systemctl start deepresearch-backend"
+    echo "   sudo systemctl enable deepresearch-backend  # 开机自启"
+    echo ""
+    echo "4. 查看状态："
+    echo "   sudo systemctl status deepresearch-backend"
+    echo ""
+    echo "5. 停止服务："
+    echo "   ./stop.sh"
+    echo "   sudo systemctl stop deepresearch-backend"
+    echo ""
+    echo "6. 查看日志："
+    echo "   sudo journalctl -u deepresearch-backend -f"
+    echo ""
+    echo "7. 访问应用："
+    echo "   后端API: http://localhost:$BACKEND_PORT"
+    echo "   前端页面: http://localhost"
+    echo "   API文档: http://localhost:$BACKEND_PORT/docs"
+    echo ""
+    echo "=================================================="
+}
+
+# 主函数
+main() {
+    # 安装系统依赖
+    read -p "是否安装系统依赖？(y/n): " install_deps
+    if [[ $install_deps =~ ^[Yy]$ ]]; then
+        install_system_deps
+    fi
+    
+    # 克隆/更新代码
+    clone_or_update_repo
+    
+    # 配置Python环境
+    setup_python_env
+    
+    # 配置Node.js环境
+    setup_node_env
+    
+    # 创建环境配置文件
+    create_env_file
+    
+    # 创建systemd服务
+    read -p "是否创建systemd服务？(y/n): " create_service
+    if [[ $create_service =~ ^[Yy]$ ]]; then
+        create_systemd_service
+    fi
+    
+    # 配置Nginx
+    read -p "是否配置Nginx？(y/n): " config_nginx
+    if [[ $config_nginx =~ ^[Yy]$ ]]; then
+        configure_nginx
+        sudo systemctl restart nginx
+    fi
+    
+    # 创建启动/停止脚本
+    create_start_script
+    create_stop_script
+    
+    # 显示使用说明
+    show_usage
+}
+
+# 运行主函数
+main "$@"
