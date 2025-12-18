@@ -15,29 +15,24 @@ NC='\033[0m' # No Color
 
 # 日志函数
 log_info() {
-    printf "${BLUE}[INFO]${NC} %s\n" "$1"
+    printf "\033[0;34m[INFO]\033[0m %s\n" "$1"
 }
 
 log_success() {
-    printf "${GREEN}[SUCCESS]${NC} %s\n" "$1"
+    printf "\033[0;32m[SUCCESS]\033[0m %s\n" "$1"
 }
 
 log_warning() {
-    printf "${YELLOW}[WARNING]${NC} %s\n" "$1"
+    printf "\033[1;33m[WARNING]\033[0m %s\n" "$1"
 }
 
 log_error() {
-    printf "${RED}[ERROR]${NC} %s\n" "$1"
+    printf "\033[0;31m[ERROR]\033[0m %s\n" "$1"
 }
 
-# 检查是否以root权限运行
-if [ "$EUID" -eq 0 ]; then
-   log_error "请不要使用root权限运行此脚本"
-   exit 1
-fi
 
 # 默认配置
-DEFAULT_INSTALL_DIR="$HOME/deep-research-pro"
+DEFAULT_INSTALL_DIR="$HOME/DeepResearchPro"
 DEFAULT_BACKEND_PORT=8000
 DEFAULT_FRONTEND_PORT=3000
 
@@ -49,12 +44,12 @@ REPO_URL="${REPO_URL:-"https://github.com/XiaoChennnng/DeepResearchPro.git"}"
 BRANCH="${BRANCH:-"main"}"
 
 # 显示欢迎信息
-printf "${BLUE}"
+printf "\033[0;34m"
 printf "==================================================\n"
 printf "     DeepResearch Pro 自动化部署脚本\n"
 printf "                 小陈出品\n"
 printf "==================================================\n"
-printf "${NC}\n"
+printf "\033[0m\n"
 
 # 检查命令是否存在
 command_exists() {
@@ -66,7 +61,7 @@ install_system_deps() {
     log_info "安装系统依赖..."
     
     # 检测操作系统
-    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    if [ "$OSTYPE" = "linux-gnu"* ]; then
         # Linux
         if command_exists apt-get; then
             sudo apt-get update
@@ -81,7 +76,7 @@ install_system_deps() {
             log_error "不支持的操作系统包管理器"
             exit 1
         fi
-    elif [[ "$OSTYPE" == "darwin"* ]]; then
+    elif [ "$OSTYPE" = "darwin"* ]; then
         # macOS
         if ! command_exists brew; then
             log_error "请先安装Homebrew: https://brew.sh"
@@ -390,7 +385,7 @@ main() {
     # 安装系统依赖
     printf "是否安装系统依赖？(y/n): "
     read install_deps
-    if echo "$install_deps" | grep -q "[Yy]"; then
+    if [ "$install_deps" = "y" ] || [ "$install_deps" = "Y" ]; then
         install_system_deps
     fi
     
@@ -409,14 +404,14 @@ main() {
     # 创建systemd服务
     printf "是否创建systemd服务？(y/n): "
     read create_service
-    if echo "$create_service" | grep -q "[Yy]"; then
+    if [ "$create_service" = "y" ] || [ "$create_service" = "Y" ]; then
         create_systemd_service
     fi
     
     # 配置Nginx
     printf "是否配置Nginx？(y/n): "
     read config_nginx
-    if echo "$config_nginx" | grep -q "[Yy]"; then
+    if [ "$config_nginx" = "y" ] || [ "$config_nginx" = "Y" ]; then
         configure_nginx
         sudo systemctl restart nginx
     fi
