@@ -138,8 +138,8 @@ setup_python_env() {
         python3 -m venv venv
     fi
     
-    # 激活虚拟环境
-    source venv/bin/activate
+    # 激活虚拟环境（在sh中使用.代替source）
+    . venv/bin/activate
     
     # 升级pip
     pip install --upgrade pip
@@ -289,7 +289,7 @@ create_start_script() {
     log_info "创建启动脚本..."
     
     cat > "$INSTALL_DIR/start.sh" << 'EOF'
-#!/bin/bash
+#!/bin/sh
 
 # DeepResearch Pro 启动脚本
 
@@ -298,7 +298,7 @@ echo "启动 DeepResearch Pro..."
 # 启动后端服务
 echo "启动后端服务..."
 cd backend
-source venv/bin/activate
+. venv/bin/activate
 python run.py &
 BACKEND_PID=$!
 
