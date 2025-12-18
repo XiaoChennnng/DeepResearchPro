@@ -336,10 +336,18 @@ done
 
 echo "启动 DeepResearch Pro..."
 echo "启动模式: $MODE"
+echo "项目路径: $(pwd)"
+
+# 记录原始目录
+ORIGINAL_DIR=$(pwd)
 
 # 启动后端服务
 echo "启动后端服务..."
-cd backend
+cd "$ORIGINAL_DIR/backend"
+if [ ! -d "venv" ]; then
+    echo "错误：虚拟环境不存在，请先运行部署脚本"
+    exit 1
+fi
 . venv/bin/activate
 python run.py &
 BACKEND_PID=$!
@@ -347,36 +355,41 @@ BACKEND_PID=$!
 # 等待后端启动
 sleep 5
 
+# 检查后端是否启动成功
+if ! ps -p $BACKEND_PID > /dev/null; then
+    echo "错误：后端服务启动失败"
+    exit 1
+fi
+
 # 根据模式启动前端服务
 if [ "$MODE" = "dev" ]; then
     # 开发模式：启动前端开发服务器
     echo "启动前端开发服务器..."
-    cd ..
-    npm run dev &
-    FRONTEND_PID=$!
+    cd "$ORIGINAL_DIR"
+    
+    # 检查package.json是否存在
+    if [ ! -f "package.json" ]; then
+        echo "错误：package.json不存在，前端无法启动"
+    else
+        # 启动前端开发服务器，不使用&，直接在前台运行，这样可以看到前端输出
+        echo "前端开发服务器启动命令：npm run dev"
+        echo "====================================="
+        npm run dev
+    fi
 else
     # 生产模式：前端使用Nginx服务，不需要单独启动
     echo "生产模式：前端使用Nginx服务，不需要单独启动"
-fi
-
-echo "服务启动完成!"
-if [ "$MODE" = "dev" ]; then
-    echo "后端API: http://localhost:8000"
-    echo "前端页面: http://localhost:5173"
-else
+    
+    echo "服务启动完成!"
     echo "后端API: http://localhost:8000"
     echo "前端页面: http://localhost"
-fi
-echo "健康检查: http://localhost:8000/health"
-echo "API文档: http://localhost:8000/docs"
-echo ""
-echo "按 Ctrl+C 停止服务"
-
-# 等待用户中断
-trap "kill $BACKEND_PID $FRONTEND_PID 2>/dev/null; exit" INT
-if [ "$MODE" = "dev" ]; then
-    wait $BACKEND_PID $FRONTEND_PID
-else
+    echo "健康检查: http://localhost:8000/health"
+    echo "API文档: http://localhost:8000/docs"
+    echo ""
+    echo "按 Ctrl+C 停止服务"
+    
+    # 等待用户中断
+    trap "kill $BACKEND_PID 2>/dev/null; exit" INT
     wait $BACKEND_PID
 fi
 EOF
