@@ -206,17 +206,20 @@ DATABASE_URL="sqlite+aiosqlite:///./deepresearch.db"
 # CORS配置
 CORS_ORIGINS=["http://localhost:$FRONTEND_PORT", "http://127.0.0.1:$FRONTEND_PORT"]
 
-# OpenAI API配置 (请替换为你的API密钥)
+# LLM配置（支持国内外大模型）
+LLM_PROVIDER="openai"
+LLM_API_KEY="your-openai-api-key-here"
+LLM_MODEL="gpt-4o-mini"
+LLM_BASE_URL="https://api.openai.com/v1"
+
+# 兼容旧配置
 OPENAI_API_KEY="your-openai-api-key-here"
-OPENAI_MODEL="gpt-4"
 OPENAI_BASE_URL="https://api.openai.com/v1"
+OPENAI_MODEL="gpt-4o-mini"
 
 # 搜索配置
-DUCKDUCKGO_MAX_RESULTS=5
-
-# 日志配置
-LOG_LEVEL="INFO"
-LOG_FILE="logs/app.log"
+MAX_SEARCH_RESULTS=10
+SEARCH_TIMEOUT=30
 EOF
         log_warning "已创建.env文件，请编辑backend/.env文件配置你的API密钥"
     else
