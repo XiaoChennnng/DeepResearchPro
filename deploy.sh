@@ -83,6 +83,13 @@ install_system_deps() {
                 
                 # 安装Node.js v20（使用NodeSource）
                 log_info "安装Node.js v20..."
+                
+                # 移除旧的Node.js相关包，避免冲突
+                log_info "移除旧的Node.js相关包..."
+                sudo apt-get purge -y nodejs libnode-dev libnode72 2>/dev/null || true
+                sudo apt-get autoremove -y
+                
+                # 安装Node.js v20
                 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
                 sudo apt-get install -y nodejs
             elif command_exists yum; then
