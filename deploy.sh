@@ -79,7 +79,12 @@ install_system_deps() {
             # Linux
             if command_exists apt-get; then
                 sudo apt-get update
-                sudo apt-get install -y python3 python3-pip python3-venv nodejs npm git curl nginx
+                sudo apt-get install -y python3 python3-pip python3-venv git curl nginx
+                
+                # 安装Node.js v20（使用NodeSource）
+                log_info "安装Node.js v20..."
+                curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+                sudo apt-get install -y nodejs
             elif command_exists yum; then
                 sudo yum update -y
                 sudo yum install -y python3 python3-pip nodejs npm git curl nginx
@@ -97,7 +102,8 @@ install_system_deps() {
                 log_error "请先安装Homebrew: https://brew.sh"
                 exit 1
             fi
-            brew install python node git nginx
+            brew install python node@20 git nginx
+            brew link --overwrite node@20
             ;;
         *)
             log_error "不支持的操作系统类型: $OS_TYPE"
@@ -106,6 +112,13 @@ install_system_deps() {
     esac
     
     log_success "系统依赖安装完成"
+    
+    # 验证Node.js版本
+    log_info "验证Node.js和npm版本..."
+    node --version
+    npm --version
+    
+    log_success "Node.js和npm版本验证完成"
 }
 
 # 克隆或更新代码
