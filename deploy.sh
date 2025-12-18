@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # DeepResearch Pro 自动化部署脚本
 # 作者：小陈
@@ -51,6 +51,15 @@ printf "                 小陈出品\n"
 printf "==================================================\n"
 printf "\033[0m\n"
 
+# 调试输出：检查基本命令是否可用
+printf "\033[0;34m[DEBUG]\033[0m 检查uname命令...\n"
+uname -s 2>/dev/null || echo "\033[0;31m[ERROR]\033[0m uname命令不可用"
+printf "\033[0;34m[DEBUG]\033[0m 检查id命令...\n"
+id -u 2>/dev/null || echo "\033[0;31m[ERROR]\033[0m id命令不可用"
+printf "\033[0;34m[DEBUG]\033[0m 检查shell类型...\n"
+echo "$0" 2>/dev/null || echo "\033[0;31m[ERROR]\033[0m 无法获取shell类型"
+printf "\033[0;34m[DEBUG]\033[0m 调试信息结束\n\n"
+
 # 检查命令是否存在
 command_exists() {
     command -v "$1" >/dev/null 2>&1
@@ -61,32 +70,40 @@ install_system_deps() {
     log_info "安装系统依赖..."
     
     # 检测操作系统
-    if [ "$(uname -s)" = "Linux" ]; then
-        # Linux
-        if command_exists apt-get; then
-            sudo apt-get update
-            sudo apt-get install -y python3 python3-pip python3-venv nodejs npm git curl nginx
-        elif command_exists yum; then
-            sudo yum update -y
-            sudo yum install -y python3 python3-pip nodejs npm git curl nginx
-        elif command_exists dnf; then
-            sudo dnf update -y
-            sudo dnf install -y python3 python3-pip nodejs npm git curl nginx
-        else
-            log_error "不支持的操作系统包管理器"
+    OS_TYPE=$(uname -s 2>/dev/null || echo "Unknown")
+    log_info "检测到操作系统类型: $OS_TYPE"
+    
+    # 使用case语句替代if-elif-else，更健壮
+    case "$OS_TYPE" in
+        Linux)
+            # Linux
+            if command_exists apt-get; then
+                sudo apt-get update
+                sudo apt-get install -y python3 python3-pip python3-venv nodejs npm git curl nginx
+            elif command_exists yum; then
+                sudo yum update -y
+                sudo yum install -y python3 python3-pip nodejs npm git curl nginx
+            elif command_exists dnf; then
+                sudo dnf update -y
+                sudo dnf install -y python3 python3-pip nodejs npm git curl nginx
+            else
+                log_error "不支持的操作系统包管理器"
+                exit 1
+            fi
+            ;;
+        Darwin)
+            # macOS
+            if ! command_exists brew; then
+                log_error "请先安装Homebrew: https://brew.sh"
+                exit 1
+            fi
+            brew install python node git nginx
+            ;;
+        *)
+            log_error "不支持的操作系统类型: $OS_TYPE"
             exit 1
-        fi
-    elif [ "$(uname -s)" = "Darwin" ]; then
-        # macOS
-        if ! command_exists brew; then
-            log_error "请先安装Homebrew: https://brew.sh"
-            exit 1
-        fi
-        brew install python node git nginx
-    else
-        log_error "不支持的操作系统"
-        exit 1
-    fi
+            ;;
+    esac
     
     log_success "系统依赖安装完成"
 }
