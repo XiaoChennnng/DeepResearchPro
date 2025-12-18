@@ -316,7 +316,26 @@ create_start_script() {
 
 # DeepResearch Pro 启动脚本
 
+# 启动模式：dev（开发模式）或 prod（生产模式）
+MODE="prod"
+
+# 解析命令行参数
+for arg in "$@";
+do
+    case $arg in
+        -d|--dev)
+        MODE="dev"
+        shift
+        ;;
+        *)
+        # 忽略其他参数
+        shift
+        ;;
+    esac
+done
+
 echo "启动 DeepResearch Pro..."
+echo "启动模式: $MODE"
 
 # 启动后端服务
 echo "启动后端服务..."
@@ -328,21 +347,38 @@ BACKEND_PID=$!
 # 等待后端启动
 sleep 5
 
-# 启动前端开发服务器（可选）
-# cd ..
-# npm run dev &
-# FRONTEND_PID=$!
+# 根据模式启动前端服务
+if [ "$MODE" = "dev" ]; then
+    # 开发模式：启动前端开发服务器
+    echo "启动前端开发服务器..."
+    cd ..
+    npm run dev &
+    FRONTEND_PID=$!
+else
+    # 生产模式：前端使用Nginx服务，不需要单独启动
+    echo "生产模式：前端使用Nginx服务，不需要单独启动"
+fi
 
 echo "服务启动完成!"
-echo "后端API: http://localhost:8000"
+if [ "$MODE" = "dev" ]; then
+    echo "后端API: http://localhost:8000"
+    echo "前端页面: http://localhost:5173"
+else
+    echo "后端API: http://localhost:8000"
+    echo "前端页面: http://localhost"
+fi
 echo "健康检查: http://localhost:8000/health"
 echo "API文档: http://localhost:8000/docs"
 echo ""
 echo "按 Ctrl+C 停止服务"
 
 # 等待用户中断
-trap "kill $BACKEND_PID; exit" INT
-wait $BACKEND_PID
+trap "kill $BACKEND_PID $FRONTEND_PID 2>/dev/null; exit" INT
+if [ "$MODE" = "dev" ]; then
+    wait $BACKEND_PID $FRONTEND_PID
+else
+    wait $BACKEND_PID
+fi
 EOF
 
     chmod +x "$INSTALL_DIR/start.sh"
@@ -392,13 +428,15 @@ show_usage() {
     echo ""
     echo "1. 配置API密钥："
     echo "   编辑文件: $INSTALL_DIR/backend/.env"
-    echo "   设置 OPENAI_API_KEY 和你的其他配置"
+    echo "   设置 LLM_API_KEY 和你的其他配置"
     echo ""
     echo "2. 手动启动："
     echo "   cd $INSTALL_DIR"
-    echo "   ./start.sh"
+    echo "   ./start.sh              # 生产模式（默认）"
+    echo "   ./start.sh -d           # 开发模式，启动前端开发服务器"
+    echo "   ./start.sh --dev        # 开发模式，启动前端开发服务器"
     echo ""
-    echo "3. 使用systemd启动（推荐）："
+    echo "3. 使用systemd启动（推荐，仅生产模式）："
     echo "   sudo systemctl start deepresearch-backend"
     echo "   sudo systemctl enable deepresearch-backend  # 开机自启"
     echo ""
@@ -413,9 +451,14 @@ show_usage() {
     echo "   sudo journalctl -u deepresearch-backend -f"
     echo ""
     echo "7. 访问应用："
-    echo "   后端API: http://localhost:$BACKEND_PORT"
-    echo "   前端页面: http://localhost"
-    echo "   API文档: http://localhost:$BACKEND_PORT/docs"
+    echo "   开发模式："
+    echo "   - 后端API: http://localhost:$BACKEND_PORT"
+    echo "   - 前端页面: http://localhost:5173"
+    echo "   - API文档: http://localhost:$BACKEND_PORT/docs"
+    echo "   生产模式："
+    echo "   - 后端API: http://localhost:$BACKEND_PORT"
+    echo "   - 前端页面: http://localhost"
+    echo "   - API文档: http://localhost:$BACKEND_PORT/docs"
     echo ""
     echo "=================================================="
 }
