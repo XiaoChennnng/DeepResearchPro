@@ -61,7 +61,7 @@ install_system_deps() {
     log_info "安装系统依赖..."
     
     # 检测操作系统
-    if [ "$OSTYPE" = "linux-gnu"* ]; then
+    if [ "$(uname -s)" = "Linux" ]; then
         # Linux
         if command_exists apt-get; then
             sudo apt-get update
@@ -76,7 +76,7 @@ install_system_deps() {
             log_error "不支持的操作系统包管理器"
             exit 1
         fi
-    elif [ "$OSTYPE" = "darwin"* ]; then
+    elif [ "$(uname -s)" = "Darwin" ]; then
         # macOS
         if ! command_exists brew; then
             log_error "请先安装Homebrew: https://brew.sh"
