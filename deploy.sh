@@ -15,23 +15,23 @@ NC='\033[0m' # No Color
 
 # 日志函数
 log_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
+    printf "${BLUE}[INFO]${NC} %s\n" "$1"
 }
 
 log_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
+    printf "${GREEN}[SUCCESS]${NC} %s\n" "$1"
 }
 
 log_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+    printf "${YELLOW}[WARNING]${NC} %s\n" "$1"
 }
 
 log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    printf "${RED}[ERROR]${NC} %s\n" "$1"
 }
 
 # 检查是否以root权限运行
-if [[ $EUID -eq 0 ]]; then
+if [ "$EUID" -eq 0 ]; then
    log_error "请不要使用root权限运行此脚本"
    exit 1
 fi
@@ -46,15 +46,15 @@ INSTALL_DIR="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
 BACKEND_PORT="${BACKEND_PORT:-$DEFAULT_BACKEND_PORT}"
 FRONTEND_PORT="${FRONTEND_PORT:-$DEFAULT_FRONTEND_PORT}"
 REPO_URL="${REPO_URL:-"https://github.com/XiaoChennnng/DeepResearchPro.git"}"
-BRANCH="${BRANCH:-"master"}"
+BRANCH="${BRANCH:-"main"}"
 
 # 显示欢迎信息
-echo -e "${BLUE}"
-echo "=================================================="
-echo "     DeepResearch Pro 自动化部署脚本"
-echo "                 小陈出品"
-echo "=================================================="
-echo -e "${NC}"
+printf "${BLUE}"
+printf "==================================================\n"
+printf "     DeepResearch Pro 自动化部署脚本\n"
+printf "                 小陈出品\n"
+printf "==================================================\n"
+printf "${NC}\n"
 
 # 检查命令是否存在
 command_exists() {
@@ -388,8 +388,9 @@ show_usage() {
 # 主函数
 main() {
     # 安装系统依赖
-    read -p "是否安装系统依赖？(y/n): " install_deps
-    if [[ $install_deps =~ ^[Yy]$ ]]; then
+    printf "是否安装系统依赖？(y/n): "
+    read install_deps
+    if echo "$install_deps" | grep -q "[Yy]"; then
         install_system_deps
     fi
     
@@ -406,14 +407,16 @@ main() {
     create_env_file
     
     # 创建systemd服务
-    read -p "是否创建systemd服务？(y/n): " create_service
-    if [[ $create_service =~ ^[Yy]$ ]]; then
+    printf "是否创建systemd服务？(y/n): "
+    read create_service
+    if echo "$create_service" | grep -q "[Yy]"; then
         create_systemd_service
     fi
     
     # 配置Nginx
-    read -p "是否配置Nginx？(y/n): " config_nginx
-    if [[ $config_nginx =~ ^[Yy]$ ]]; then
+    printf "是否配置Nginx？(y/n): "
+    read config_nginx
+    if echo "$config_nginx" | grep -q "[Yy]"; then
         configure_nginx
         sudo systemctl restart nginx
     fi
