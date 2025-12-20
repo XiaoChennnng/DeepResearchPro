@@ -1,6 +1,5 @@
 /**
  * 图表导出工具
- * 支持 PDF 和 WORD 格式导出
  */
 
 import jsPDF from 'jspdf'
@@ -8,9 +7,7 @@ import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 import { Document, Packer, Paragraph, PageBreak, TextRun } from 'docx'
 
-/**
- * 将图表容器转换为 Canvas
- */
+/** 将图表容器转换为Canvas */
 export async function chartToCanvas(element: HTMLElement): Promise<HTMLCanvasElement> {
   const canvas = await html2canvas(element, {
     logging: false,
@@ -20,9 +17,7 @@ export async function chartToCanvas(element: HTMLElement): Promise<HTMLCanvasEle
   return canvas
 }
 
-/**
- * 导出单个图表为 PDF
- */
+/** 导出单个图表为PDF */
 export async function exportChartToPDF(
   chartElement: HTMLElement,
   fileName: string = 'chart.pdf'

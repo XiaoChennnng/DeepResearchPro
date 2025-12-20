@@ -1,7 +1,6 @@
 #!/bin/sh
 
 # DeepResearch Pro 自动化部署脚本
-# 作者：小陈
 # 功能：从远端拉取代码并自动完成配置
 
 set -e  # 遇到错误立即退出
@@ -47,7 +46,6 @@ BRANCH="${BRANCH:-"main"}"
 printf "\033[0;34m"
 printf "==================================================\n"
 printf "     DeepResearch Pro 自动化部署脚本\n"
-printf "                 小陈出品\n"
 printf "==================================================\n"
 printf "\033[0m\n"
 
@@ -126,6 +124,33 @@ install_system_deps() {
     npm --version
     
     log_success "Node.js和npm版本验证完成"
+    
+    # 配置防火墙，允许HTTP和后端API访问
+    log_info "配置防火墙..."
+    if command_exists ufw; then
+        # 允许HTTP流量
+        sudo ufw allow 80/tcp
+        # 允许后端API访问
+        sudo ufw allow 8000/tcp
+        # 允许SSH访问（如果未允许）
+        sudo ufw allow ssh
+        # 启用防火墙（如果未启用）
+        if ! sudo ufw status | grep -q "Status: active"; then
+            log_warning "防火墙未启用，正在启用防火墙..."
+            sudo ufw --force enable
+        fi
+        sudo ufw status
+    elif command_exists firewall-cmd; then
+        # Firewalld (CentOS/RHEL)
+        sudo firewall-cmd --permanent --add-port=80/tcp
+        sudo firewall-cmd --permanent --add-port=8000/tcp
+        sudo firewall-cmd --reload
+        sudo firewall-cmd --list-all
+    else
+        log_info "未检测到ufw或firewalld，跳过防火墙配置"
+    fi
+    
+    log_success "防火墙配置完成"
 }
 
 # 克隆或更新代码
@@ -197,14 +222,14 @@ create_env_file() {
 APP_NAME="DeepResearch Pro"
 APP_VERSION="1.0.0"
 DEBUG=false
-HOST="0.0.0.0"
+HOST="0.0.0.0"  # 允许监听所有网络接口，支持公网访问
 PORT=$BACKEND_PORT
 
 # 数据库配置
 DATABASE_URL="sqlite+aiosqlite:///./deepresearch.db"
 
-# CORS配置
-CORS_ORIGINS=["http://localhost:$FRONTEND_PORT", "http://127.0.0.1:$FRONTEND_PORT"]
+# CORS配置 - 支持公网访问
+CORS_ORIGINS=["http://localhost:$FRONTEND_PORT", "http://127.0.0.1:$FRONTEND_PORT", "http://localhost", "http://*:$FRONTEND_PORT"]
 
 # LLM配置（支持国内外大模型）
 LLM_PROVIDER="openai"

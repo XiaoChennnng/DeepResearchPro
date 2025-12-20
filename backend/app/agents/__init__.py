@@ -1,1 +1,2 @@
-# Agents module - 多智能体系统
+# Agents module
+from .inverter import InverterAgent

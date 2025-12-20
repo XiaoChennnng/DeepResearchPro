@@ -8,9 +8,7 @@ export function AppLayout() {
     <ThemeProvider>
       <TooltipProvider>
         <div className="relative min-h-screen flex flex-col bg-background">
-          {/* 顶部导航栏 */}
           <Navbar />
-          {/* 主要内容区域 */}
           <main className="flex-1">
             <Outlet />
           </main>

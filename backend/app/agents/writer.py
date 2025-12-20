@@ -1,7 +1,5 @@
 """
 Writer Agent - 报告写作Agent
-负责将分析结果转换为结构化、专业的研究报告
-支持去AI味处理和内容优化
 """
 
 from typing import Dict, Any, List, Optional
@@ -16,13 +14,9 @@ from app.orchestrator.context_orchestrator import AgentExecutionResult
 
 
 class WriterAgent(BaseAgent):
-    """
-    写作Agent
-    将分析结果转换为结构化、专业的研究报告
-    支持去AI味处理和内容优化
-    """
+    """写作Agent"""
 
-    # AI高频用语禁用词库（PRD要求的"去AI味引擎"）
+    # AI高频用语禁用词库
     AI_BANNED_PHRASES = [
         # 中文AI高频用语
         "值得注意的是",
@@ -209,7 +203,7 @@ class WriterAgent(BaseAgent):
                 existing_report or "",
             )
 
-            # 【小陈加强版】去AI味后处理
+            # 去AI味后处理
             await self.update_subtask(f"正在优化语言风格，去除AI痕迹")
             report = await self._humanize_report(report)
 
@@ -281,7 +275,7 @@ class WriterAgent(BaseAgent):
         review_feedback = core_context.get("review_feedback", {})
         is_revision = bool(existing_report and review_feedback)
 
-        # 【小陈加强】确定需要修改的parts
+        # 确定需要修改的parts
         parts_need_revision = set()
         if is_revision and "critical_issues" in review_feedback:
             for issue in review_feedback.get("critical_issues", []):
@@ -296,6 +290,13 @@ class WriterAgent(BaseAgent):
             logger.info(
                 f"[WriterAgent] 从现有报告中提取了 {len(existing_parts)} 个parts用于复用"
             )
+
+        # === 生成报告题目 ===
+        await self.update_subtask("正在生成报告题目...")
+        report_title = await self._generate_report_title(
+            query, analysis_summary, key_facts, insights
+        )
+        logger.info(f"[WriterAgent] 报告题目生成完成: {report_title}")
 
         # 优化版：7个部分（删除AI生成参考文献）
         # 总计约22000字，分段避免token超限
@@ -451,7 +452,7 @@ class WriterAgent(BaseAgent):
         # 参考文献直接由前端从task.sources数据渲染，避免AI生成错误
 
         # 合并所有部分
-        full_report = self._merge_report_parts(report_parts, query)
+        full_report = self._merge_report_parts(report_parts, report_title)
 
         # 检查报告总长度
         total_chars = len(full_report)
@@ -584,14 +585,113 @@ class WriterAgent(BaseAgent):
             previous_content=previous_content,
         )
 
-    def _merge_report_parts(self, parts: List[str], query: str) -> str:
+    async def _generate_report_title(
+        self,
+        query: str,
+        analysis_summary: str,
+        key_facts: List,
+        insights: List,
+    ) -> str:
+        """
+        使用LLM生成报告题目
+        根据研究问题和分析结果生成简洁、专业、学术的题目
+        【重要】题目必须由LLM生成，不允许使用简化或默认题目
+        """
+        if not self.llm_client:
+            raise ValueError("LLM客户端未初始化，无法生成报告题目")
+
+        # 构建题目生成的上下文
+        key_facts_summary = "\n".join([
+            f"- {fact.get('content', 'N/A')[:100]}"
+            for fact in key_facts[:5]
+        ])
+        insights_summary = "\n".join([
+            f"- {insight.get('content', 'N/A')[:100]}"
+            for insight in insights[:5]
+        ])
+
+        prompt = f"""你是一个资深学术期刊编辑,擅长为研究报告撰写简洁、专业、学术的题目。
+
+研究问题:
+{query}
+
+分析摘要:
+{analysis_summary}
+
+关键发现:
+{key_facts_summary}
+
+关键洞察:
+{insights_summary}
+
+请根据以上信息,为这份研究报告生成一个合适的题目。
+
+===== 题目要求 =====
+1. 简洁:15-30字(中文字符)
+2. 专业:使用学术规范的表达方式
+3. 准确:能够概括研究的核心内容和主题
+4. 吸引:能够引起读者兴趣
+5. 格式:可以使用"主标题——副标题"的格式,用破折号(——)分隔
+
+===== 题目示例 =====
+✅ 好的题目:
+- "人工智能技术在医疗诊断中的应用研究——基于深度学习的疾病识别"
+- "数字经济对传统产业的影响分析——以制造业转型为例"
+- "城市交通拥堵治理策略研究——多源数据驱动的综合方法"
+
+❌ 不好的题目:
+- "关于{query}的研究"(太笼统)
+- "{query}"(直接使用用户问题)
+- "一种新的...方法"(太模糊)
+
+===== 输出格式 =====
+只输出题目本身,不要任何解释、前缀或后缀。如果有副标题,用破折号(——)分隔。
+"""
+
+        try:
+            response = await self.call_llm(
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+                max_tokens=100,
+            )
+
+            # 清理生成的题目
+            title = response.strip()
+            # 移除可能的引号
+            title = title.strip('"').strip("'").strip(""").strip(""")
+            # 移除可能的"题目:"前缀
+            if ":" in title or ":" in title:
+                parts = title.split(":", 1) if ":" in title else title.split(":", 1)
+                if len(parts) > 1:
+                    title = parts[1].strip()
+
+            # 如果题目太长,截断
+            if len(title) > 80:
+                logger.warning(f"[WriterAgent] 生成的题目过长({len(title)}字),将截断")
+                title = title[:80] + "..."
+
+            # 如果题目太短或为空,抛出异常
+            if len(title) < 5:
+                raise ValueError(f"LLM生成的题目过短({len(title)}字): {title}")
+
+            logger.info(f"[WriterAgent] 题目生成成功: {title}")
+            return title
+
+        except ValueError as ve:
+            # 题目验证失败,重新抛出
+            raise ve
+        except Exception as e:
+            # LLM调用失败,抛出异常
+            logger.error(f"[WriterAgent] 题目生成失败: {e}")
+            raise ValueError(f"题目生成失败: {str(e)}")
+
+    def _merge_report_parts(self, parts: List[str], report_title: str) -> str:
         """
         合并报告各部分
         将分段生成的内容拼接，加上标题和结尾
         """
         # 报告头部
-        header = f"""# {query}
-## ——基于多源数据的系统性分析研究
+        header = f"""# {report_title}
 
 ---
 
@@ -621,7 +721,7 @@ class WriterAgent(BaseAgent):
                             skip_next = False
                             continue
                         # 跳过重复的报告大标题
-                        if line.startswith("# ") and query[:20] in line:
+                        if line.startswith("# ") and report_title[:20] in line:
                             skip_next = True  # 可能下一行是副标题
                             continue
                         if line.startswith("## ——"):
@@ -1011,79 +1111,18 @@ CHART:line-->
     ) -> str:
         """
         生成基础报告（无LLM时使用）
-        小陈说：没有AI也得能干活，生成个基础报告先顶着
+        【重要】由于题目必须LLM生成，此方法不应被调用
         """
-        key_facts = analysis.get("key_facts", [])
-        insights = analysis.get("insights", [])
-
-        facts_text = (
-            "\n".join([f"- {fact.get('content', 'N/A')}" for fact in key_facts[:10]])
-            or "- 暂无关键事实"
+        raise ValueError(
+            "无法生成报告：LLM客户端未初始化。报告题目必须由LLM生成，不支持基础报告模式。"
         )
-
-        insights_text = (
-            "\n".join(
-                [f"- {insight.get('content', 'N/A')}" for insight in insights[:10]]
-            )
-            or "- 暂无关键洞察"
-        )
-
-        sources_text = (
-            "\n".join(
-                [
-                    f"{i + 1}. [{s.get('title', 'N/A')}]({s.get('url', '#')})"
-                    for i, s in enumerate(sources[:20])
-                ]
-            )
-            or "- 暂无来源"
-        )
-
-        report = f"""# 研究报告：{query}
-
-## 研究背景
-
-本报告针对"{query}"进行了系统性研究，旨在在现有文献和数据基础上，给出具有充分论证的分析结论。
-
-## 研究方法
-
-本研究采用 DeepResearch Pro 多Agent协同工作系统，包括规划、搜索、筛选、分析、写作、引用和审核等Agent协同工作。
-
-## 文献综述与相关工作
-
-在检索到的公开信息和资料范围内，系统梳理了与"{query}"相关的典型研究和代表性观点，用于为后续分析提供背景支持。
-
-## 主要发现
-
-### 关键事实
-
-{facts_text}
-
-### 核心洞察
-
-{insights_text}
-
-## 数据来源
-
-本报告基于以下 {len(sources)} 个信息来源：
-
-{sources_text}
-
-## 结论与建议
-
-基于以上分析，建议进一步深入研究相关领域，持续关注最新发展动态。
-
----
-*本报告由 DeepResearch Pro 多Agent系统自动生成*
-*生成时间: {datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")} UTC*
-"""
-        return report
 
     async def _generate_charts(
         self, query: str, analysis: Dict, sources: List[Dict]
     ) -> List[Dict]:
         """
         生成图表数据
-        小陈说：让报告更直观，通过图表展示数据
+        # 通过图表展示数据
         """
         charts = []
 
@@ -1248,7 +1287,7 @@ CHART:line-->
 
         return charts
 
-    # ==================== 小陈加强版：去AI味方法 ====================
+    # 去AI味方法
 
     async def _humanize_report(self, report: str) -> str:
         """

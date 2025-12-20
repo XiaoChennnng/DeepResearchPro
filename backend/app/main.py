@@ -1,6 +1,5 @@
 """
-DeepResearch Pro 后端主入口
-多Agent协同研究系统的后端服务
+后端主入口
 """
 
 from contextlib import asynccontextmanager
@@ -17,10 +16,7 @@ from app.api.router import api_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    应用生命周期管理器
-    负责应用启动和关闭时的资源管理
-    """
+    """应用生命周期管理"""
     logger.info("[DeepResearch Pro] 后端启动中...")
 
     # 初始化数据库
@@ -34,10 +30,7 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    """
-    创建并配置FastAPI应用实例
-    设置中间件、路由和全局异常处理
-    """
+    """创建FastAPI应用实例"""
     app = FastAPI(
         title=settings.APP_NAME,
         version=settings.APP_VERSION,

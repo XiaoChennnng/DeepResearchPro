@@ -1,7 +1,5 @@
 """
 应用配置文件
-小陈出品，配置都在这里，别tm到处找
-支持国内外主流大模型！
 """
 
 from typing import Optional, List
@@ -12,7 +10,7 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    """应用设置，这个类管理所有配置项"""
+    """应用设置类"""
 
     # 应用基础配置
     APP_NAME: str = "DeepResearch Pro"
@@ -21,43 +19,18 @@ class Settings(BaseSettings):
 
     # 服务器配置
     HOST: str = "127.0.0.1"
-    PORT: int = 8000  # 统一使用8000端口，与Vite代理保持一致
+    PORT: int = 1031  # 逆变器专用端口
 
-    # 数据库配置 - SQLite，简单够用
+    # 数据库配置
     DATABASE_URL: str = "sqlite+aiosqlite:///./data/research.db"
 
-    # ChromaDB 向量数据库配置
+    # ChromaDB配置
     CHROMA_PERSIST_DIR: str = "./data/chroma"
 
-    # ==================== LLM 配置（支持国内外大模型） ====================
-    # 提供商：openai, qwen, zhipu, moonshot, deepseek, yi, baichuan, minimax, custom
+    # LLM配置
     LLM_PROVIDER: str = "openai"
-
-    # API Key（必填）
     LLM_API_KEY: Optional[str] = None
-
-    # API Base URL（可选，不填则使用提供商默认地址）
-    # 常用地址：
-    # - OpenAI: https://api.openai.com/v1
-    # - 通义千问: https://dashscope.aliyuncs.com/compatible-mode/v1
-    # - 智谱AI: https://open.bigmodel.cn/api/paas/v4
-    # - 月之暗面: https://api.moonshot.cn/v1
-    # - DeepSeek: https://api.deepseek.com/v1
-    # - 零一万物: https://api.lingyiwanwu.com/v1
-    # - 百川: https://api.baichuan-ai.com/v1
-    # - MiniMax: https://api.minimax.chat/v1
     LLM_BASE_URL: Optional[str] = None
-
-    # 模型名称（可选，不填则使用提供商默认模型）
-    # 常用模型：
-    # - OpenAI: gpt-4o, gpt-4o-mini, gpt-4-turbo
-    # - 通义千问: qwen-turbo, qwen-plus, qwen-max
-    # - 智谱AI: glm-4, glm-4-flash, glm-3-turbo
-    # - 月之暗面: moonshot-v1-8k, moonshot-v1-32k, moonshot-v1-128k
-    # - DeepSeek: deepseek-chat, deepseek-coder
-    # - 零一万物: yi-large, yi-medium
-    # - 百川: Baichuan4, Baichuan3-Turbo
-    # - MiniMax: abab6.5s-chat, abab5.5-chat
     LLM_MODEL: Optional[str] = None
 
     # 兼容旧配置（向后兼容）
@@ -72,6 +45,10 @@ class Settings(BaseSettings):
     # WebSocket 配置
     WS_HEARTBEAT_INTERVAL: int = 30
 
+    # 服务器配置
+    HOST: str = "0.0.0.0"  # 修改为0.0.0.0，允许监听所有网络接口
+    PORT: int = 1031  # 逆变器专用端口
+
     # CORS 配置
     CORS_ORIGINS: List[str] = [
         "http://localhost:1420",
@@ -81,10 +58,7 @@ class Settings(BaseSettings):
     ]
 
     def get_llm_config(self) -> dict:
-        """
-        获取 LLM 配置
-        小陈说：这个方法统一处理新旧配置，优先使用新配置
-        """
+        """获取LLM配置"""
         local_overrides = _read_local_llm_config()
 
         api_key = local_overrides.get("api_key")
@@ -121,10 +95,7 @@ class Settings(BaseSettings):
 
 @lru_cache()
 def get_settings() -> Settings:
-    """
-    获取配置单例
-    小陈我用lru_cache缓存，别每次都创建新的，浪费资源
-    """
+    """获取配置单例"""
     return Settings()
 
 

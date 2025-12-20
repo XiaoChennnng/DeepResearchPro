@@ -1,6 +1,5 @@
 """
-Agent 基类定义
-定义了所有Agent的统一接口和基础功能
+Agent基类
 """
 
 from abc import ABC, abstractmethod
@@ -20,10 +19,7 @@ from app.orchestrator.context_orchestrator import AgentExecutionResult
 
 @dataclass
 class AgentState:
-    """
-    Agent状态数据类
-    用于旧版兼容，新架构主要使用ContextOrchestrator
-    """
+    """Agent状态数据类"""
 
     task_id: int
     query: str
@@ -53,10 +49,7 @@ class AgentState:
 
 
 class BaseAgent(ABC):
-    """
-    Agent基类
-    定义了所有Agent的统一接口和基础功能
-    """
+    """Agent基类"""
 
     def __init__(
         self,
@@ -113,21 +106,11 @@ class BaseAgent(ABC):
 
     @abstractmethod
     async def execute(self, context: Dict[str, Any]) -> AgentExecutionResult:
-        """
-        执行Agent任务（新版接口）
-
-        Args:
-            context: 从ContextOrchestrator获取的上下文
-
-        Returns:
-            AgentExecutionResult: 执行结果
-        """
+        """执行Agent任务"""
         pass
 
     async def run(self, state: AgentState) -> AgentState:
-        """
-        执行Agent任务（旧版接口，兼容使用）
-        """
+        """执行Agent任务（旧版接口）"""
         # 转换为新格式调用
         context = {
             "core_context": {
@@ -175,10 +158,7 @@ class BaseAgent(ABC):
         return state
 
     def _clamp_max_tokens(self, requested_tokens: int) -> int:
-        """
-        根据提供商限制max_tokens上限
-        防止超过各LLM提供商的API限制
-        """
+        """限制max_tokens不超过提供商上限"""
         from app.core.llm_factory import LLMProvider
 
         # 各大模型提供商的max_tokens限制（这是API的实际输出限制，不是上下文窗口！）
@@ -215,10 +195,7 @@ class BaseAgent(ABC):
         max_tokens: int = 4000,
         json_mode: bool = False,
     ) -> str:
-        """
-        统一的LLM调用接口
-        负责token统计、错误处理和状态更新
-        """
+        """LLM调用接口"""
         if not self.llm_client:
             raise ValueError("LLM客户端未设置，无法执行任务")
 
@@ -332,9 +309,7 @@ class BaseAgent(ABC):
         errors: List[str] = None,
         context_changes: Dict[str, Any] = None,
     ) -> AgentExecutionResult:
-        """
-        创建标准化的执行结果对象
-        """
+        """创建执行结果对象"""
         metrics = self.get_metrics()
         return AgentExecutionResult(
             agent_type=self.agent_type.value,
@@ -349,10 +324,7 @@ class BaseAgent(ABC):
     def _build_system_prompt(
         self, role_description: str, context: Dict[str, Any]
     ) -> str:
-        """
-        构建系统提示词
-        将上下文信息整合到系统提示词中
-        """
+        """构建系统提示词"""
         core = context.get("core_context", {})
         extended = context.get("extended_context", {})
         kg_summary = context.get("knowledge_graph_summary", {})

@@ -45,7 +45,7 @@ import {
   type TaskStatus,
 } from '@/services/api'
 
-// Research stages - user-friendly descriptions
+// 研究阶段
 const stages = [
   { id: 'planning', name: '分析问题', icon: Brain, description: '正在理解研究问题并制定计划...' },
   { id: 'searching', name: '搜索资料', icon: Search, description: '正在从多个来源搜索相关信息...' },
@@ -56,7 +56,7 @@ const stages = [
   { id: 'reviewing', name: '质量审核', icon: CheckCircle2, description: '正在进行报告质量审核...' },
 ]
 
-// Agent types with their properties - user-friendly names
+// Agent类型配置
 const agentTypes = {
   planner: { name: '研究规划', icon: Brain, color: 'text-purple-500', bgColor: 'bg-purple-500/10', borderColor: 'border-purple-500/30' },
   searcher: { name: '资料搜索', icon: Globe, color: 'text-blue-500', bgColor: 'bg-blue-500/10', borderColor: 'border-blue-500/30' },
@@ -67,7 +67,7 @@ const agentTypes = {
   reviewer: { name: '质量审核', icon: Shield, color: 'text-red-500', bgColor: 'bg-red-500/10', borderColor: 'border-red-500/30' },
 }
 
-// Sub-task type for detailed agent execution
+// 子任务类型
 type SubTask = {
   id: string
   title: string

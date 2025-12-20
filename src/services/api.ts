@@ -1,12 +1,10 @@
 /**
  * API服务层
- * 负责与后端接口的对接和数据交互
  */
-// API基础URL - 由Vite代理处理/api请求
 const API_BASE_URL = ''
 
 /**
- * 通用HTTP请求封装函数
+ * HTTP请求封装
  */
 async function request<T>(
   endpoint: string,
@@ -39,7 +37,7 @@ async function request<T>(
   }
 }
 
-// ==================== 研究任务相关接口 ====================
+// 研究任务接口
 
 export type TaskStatus =
   | 'pending'
@@ -162,9 +160,7 @@ export interface ReportQAResponse {
   answer: string
 }
 
-/**
- * 获取研究任务列表
- */
+/** 获取研究任务列表 */
 export async function getResearchTasks(params?: {
   skip?: number
   limit?: number
@@ -179,9 +175,7 @@ export async function getResearchTasks(params?: {
   return request<ResearchTaskListResponse>(endpoint)
 }
 
-/**
- * 创建研究任务
- */
+/** 创建研究任务 */
 export async function createResearchTask(
   data: ResearchTaskCreate
 ): Promise<ResearchTask> {
@@ -191,34 +185,26 @@ export async function createResearchTask(
   })
 }
 
-/**
- * 获取研究任务详情
- */
+/** 获取研究任务详情 */
 export async function getResearchTask(taskId: number): Promise<ResearchTaskDetail> {
   return request<ResearchTaskDetail>(`/api/research/tasks/${taskId}`)
 }
 
-/**
- * 暂停研究任务
- */
+/** 暂停研究任务 */
 export async function pauseResearchTask(taskId: number): Promise<void> {
   await request(`/api/research/tasks/${taskId}/pause`, {
     method: 'POST',
   })
 }
 
-/**
- * 继续研究任务
- */
+/** 继续研究任务 */
 export async function resumeResearchTask(taskId: number): Promise<void> {
   await request(`/api/research/tasks/${taskId}/resume`, {
     method: 'POST',
   })
 }
 
-/**
- * 删除研究任务
- */
+/** 删除研究任务 */
 export async function deleteResearchTask(taskId: number): Promise<void> {
   await request(`/api/research/tasks/${taskId}`, {
     method: 'DELETE',
@@ -241,7 +227,7 @@ export async function askReportQuestion(
   })
 }
 
-// ==================== 设置 / LLM 配置 ====================
+// LLM配置
 
 export type LLMProviderId =
   | 'openai'
@@ -297,9 +283,7 @@ export async function updateLLMConfig(data: LLMConfigUpdate): Promise<LLMConfigP
   })
 }
 
-/**
- * 导出报告
- */
+/** 导出报告 */
 export async function exportReport(
   taskId: number,
   format: 'pdf' | 'word' | 'markdown',
@@ -320,11 +304,9 @@ export async function exportReport(
   return response.blob()
 }
 
-// ==================== WebSocket连接 ====================
+// WebSocket连接
 
-/**
- * 创建WebSocket连接
- */
+/** 创建WebSocket连接 */
 export function createWebSocket(taskId: number): WebSocket {
 	const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
 

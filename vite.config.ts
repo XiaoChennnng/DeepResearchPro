@@ -5,22 +5,16 @@ import path from "path";
 
 const host = process.env.TAURI_DEV_HOST;
 
-// https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [react()],
 
-  // Path aliases
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
   },
 
-  // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
-  //
-  // 1. prevent Vite from obscuring rust errors
   clearScreen: false,
-  // 2. use a stable dev port that matches Tauri devUrl
   server: {
     port: 5173,
     strictPort: true,
@@ -33,8 +27,16 @@ export default defineConfig(async () => ({
         }
       : undefined,
     watch: {
-      // 3. tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+      ignored: [
+        "**/src-tauri/**",
+        "**/node_modules/**",
+        "**/.git/**",
+        "**/backend/**",
+        "**/venv/**",
+        "**/data/**",
+        "**/__pycache__/**",
+        "**/dist/**"
+      ],
     },
     proxy: {
       '/api': {
