@@ -1,8 +1,4 @@
-"""
-研究工作流 - 7 Agent 协同
-小陈说：这是多Agent协调的核心，整合中央协调器和7个Agent
-全部对接真实LLM，没有任何模拟数据！
-"""
+"""研究工作流"""
 
 from typing import Dict, Any, Optional, Callable, Awaitable
 from datetime import datetime
@@ -26,8 +22,11 @@ from app.core.logging import logger
 
 class ResearchWorkflow:
     """
-    研究工作流（7 Agent版本）
-    小陈说：这是整个系统的核心，编排7个Agent协同工作
+    研究工作流
+
+    工作流模式：
+    1. legacy - 传统线性执行
+    2. langgraph - 高级条件分支和循环执行
 
     Agent执行顺序：
     1. Planner - 规划研究任务
@@ -57,12 +56,14 @@ class ResearchWorkflow:
         model: Optional[str] = None,
         llm_factory: Optional[Any] = None,
         status_callback: Optional[Callable] = None,
+        workflow_mode: str = "langgraph",  # "legacy" 或 "langgraph"
     ):
         self.llm_client = llm_client
         self.search_tools = search_tools or {}
         self.model = model
         self.llm_factory = llm_factory
         self.status_callback = status_callback
+        self.workflow_mode = workflow_mode
 
         # 初始化7个Agent
         self.agents = {
@@ -111,7 +112,17 @@ class ResearchWorkflow:
             ),
         }
 
-        logger.info("[ResearchWorkflow] 初始化完成，7个Agent就位")
+        # LangGraph工作流暂未实现，默认使用传统模式
+        self.langgraph_workflow = None
+        if workflow_mode == "langgraph":
+            logger.warning(
+                "[ResearchWorkflow] LangGraph工作流暂未完全实现，将使用传统模式"
+            )
+            self.workflow_mode = "legacy"
+
+        logger.info(
+            f"[ResearchWorkflow] 初始化完成，7个Agent就位，工作流模式: {self.workflow_mode}"
+        )
 
     def set_llm_client(
         self,
@@ -152,9 +163,20 @@ class ResearchWorkflow:
             包含最终结果的字典
         """
         logger.info(
-            f"[ResearchWorkflow] 开始执行工作流: task_id={task_id}, query={query[:50]}..."
+            f"[ResearchWorkflow] 开始执行工作流 (模式: {self.workflow_mode}): task_id={task_id}, query={query[:50]}..."
         )
 
+        # 当前使用传统线性执行模式
+        # TODO: 未来实现LangGraph工作流引擎
+        return await self._run_legacy(task_id, query, callback)
+
+    async def _run_legacy(
+        self,
+        task_id: int,
+        query: str,
+        callback: Optional[Callable[[str, float], Awaitable[None]]] = None,
+    ) -> Dict[str, Any]:
+        """使用传统线性模式执行工作流"""
         # 初始化中央协调器
         orchestrator = ContextOrchestrator(
             task_id=task_id, query=query, llm_client=self.llm_client
@@ -338,9 +360,195 @@ class ResearchWorkflow:
             }
 
             # 保存协调器状态（用于后续恢复或调试）
-            results[
-                "orchestrator_state"
-            ] = await orchestrator.get_state_for_persistence()
+            results["orchestrator_state"] = orchestrator.get_state_for_persistence()
+
+            logger.info(
+                f"[ResearchWorkflow] 工作流完成: task_id={task_id}, status={results['status']}"
+            )
+
+        except Exception as e:
+            logger.error(f"[ResearchWorkflow] 工作流执行失败: {e}")
+            results["status"] = "failed"
+            results["errors"].append(f"工作流执行失败: {str(e)}")
+
+            for name in self.agents.keys():
+                if name not in results["agent_results"]:
+                    results["agent_results"][name] = {
+                        "success": False,
+                        "tokens_used": 0,
+                        "duration_ms": 0,
+                        "errors": ["未执行：因工作流异常终止导致"],
+                    }
+
+            if callback:
+                await callback("failed", 0)
+
+        return results
+
+        try:
+            # 依次执行7个Agent
+            prev_progress = 0.0
+            for agent_name, status, phase_end in self.AGENT_PHASES:
+                logger.info(f"[ResearchWorkflow] 执行Agent: {agent_name}")
+
+                # 阶段开始：用上一个阶段结束值作为起点进度，方便前端从0%开始渲染当前Agent进度
+                if callback:
+                    await callback(status, prev_progress)
+
+                # 获取对齐后的上下文
+                context = await orchestrator.align_context_for_agent(agent_name)
+
+                # 执行Agent
+                agent = self.agents[agent_name]
+                result = await agent.execute(context)
+
+                # 阶段结束：报告该阶段的目标进度，用于整体进度条和Agent局部进度收尾到100%
+                if callback:
+                    await callback(status, phase_end)
+
+                # 更新上一阶段结束进度
+                prev_progress = phase_end
+
+                # 同步结果到协调器
+                await orchestrator.sync_context_after_agent(agent_name, result)
+
+                # 记录结果
+                results["agent_results"][agent_name] = {
+                    "success": result.success,
+                    "tokens_used": result.tokens_used,
+                    "duration_ms": result.duration_ms,
+                    "errors": result.errors,
+                }
+
+                # 检查是否有严重错误
+                if not result.success and result.errors:
+                    logger.error(
+                        f"[ResearchWorkflow] Agent {agent_name} 执行失败: {result.errors}"
+                    )
+                    # 非关键Agent失败不中断流程
+                    if agent_name in ["planner", "searcher"]:
+                        results["errors"].extend(result.errors)
+                        results["status"] = "failed"
+                        break
+
+                # 收集中间结果
+                if agent_name == "searcher":
+                    results["sources"] = result.output.get("sources", [])
+                elif agent_name == "reviewer":
+                    results["final_report"] = result.output.get("final_report", "")
+                    results["review_score"] = result.output.get("score", 0)
+
+            if results.get("status") != "failed":
+                rewrite_count = 0
+                max_rewrites = 3
+                while rewrite_count < max_rewrites:
+                    core_ctx = orchestrator.context_manager.core_context
+                    review_feedback = getattr(core_ctx, "review_feedback", {}) or {}
+
+                    if not review_feedback or review_feedback.get("passed"):
+                        break
+
+                    logger.info(
+                        "[ResearchWorkflow] 审核未通过，启动自动重写流程：Writer -> Citer -> Reviewer"
+                    )
+
+                    rewrite_stages = [
+                        ("writer", "writing", 80.0),
+                        ("citer", "citing", 88.0),
+                        ("reviewer", "reviewing", 95.0),
+                    ]
+
+                    for agent_name, status, progress in rewrite_stages:
+                        logger.info(
+                            f"[ResearchWorkflow] 自动重写阶段执行Agent: {agent_name}"
+                        )
+
+                        if callback:
+                            await callback(status, progress)
+
+                        context = await orchestrator.align_context_for_agent(agent_name)
+                        agent = self.agents[agent_name]
+                        result = await agent.execute(context)
+
+                        await orchestrator.sync_context_after_agent(agent_name, result)
+
+                        prev = results["agent_results"].get(
+                            agent_name,
+                            {
+                                "success": True,
+                                "tokens_used": 0,
+                                "duration_ms": 0,
+                                "errors": [],
+                            },
+                        )
+
+                        merged_errors = list(prev.get("errors", [])) + list(
+                            result.errors or []
+                        )
+                        merged_tokens = int(prev.get("tokens_used", 0)) + int(
+                            result.tokens_used or 0
+                        )
+                        merged_duration = int(prev.get("duration_ms", 0)) + int(
+                            result.duration_ms or 0
+                        )
+
+                        merged_success = (
+                            bool(prev.get("success", True))
+                            and bool(result.success)
+                            and not merged_errors
+                        )
+
+                        results["agent_results"][agent_name] = {
+                            "success": merged_success,
+                            "tokens_used": merged_tokens,
+                            "duration_ms": merged_duration,
+                            "errors": merged_errors,
+                        }
+
+                        if agent_name == "reviewer":
+                            results["final_report"] = result.output.get(
+                                "final_report", ""
+                            )
+                            results["review_score"] = result.output.get("score", 0)
+
+                    core_ctx = orchestrator.context_manager.core_context
+                    review_feedback = getattr(core_ctx, "review_feedback", {}) or {}
+                    if review_feedback.get("passed"):
+                        logger.info("[ResearchWorkflow] 自动重写后审核通过")
+                        break
+
+                    rewrite_count += 1
+
+            # 完成
+            if results["status"] != "failed":
+                results["status"] = "completed"
+                if callback:
+                    await callback("completed", 100)
+
+            # 补全所有Agent的结果，确保7个Agent都有明确状态
+            for name in self.agents.keys():
+                if name not in results["agent_results"]:
+                    results["agent_results"][name] = {
+                        "success": False,
+                        "tokens_used": 0,
+                        "duration_ms": 0,
+                        "errors": ["未执行：因上游阶段失败或工作流中断导致"],
+                    }
+
+            # 收集指标
+            results["metrics"] = {
+                "total_tokens": sum(
+                    r.get("tokens_used", 0) for r in results["agent_results"].values()
+                ),
+                "total_duration_ms": sum(
+                    r.get("duration_ms", 0) for r in results["agent_results"].values()
+                ),
+                "sources_count": len(results["sources"]),
+                "knowledge_nodes_count": len(orchestrator.knowledge_graph.nodes),
+            }
+
+            # 保存协调器状态（用于后续恢复或调试）
+            results["orchestrator_state"] = orchestrator.get_state_for_persistence()
 
             logger.info(
                 f"[ResearchWorkflow] 工作流完成: task_id={task_id}, status={results['status']}"

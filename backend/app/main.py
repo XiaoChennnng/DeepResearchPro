@@ -23,9 +23,26 @@ async def lifespan(app: FastAPI):
     await init_db()
     logger.info("[DeepResearch Pro] 数据库初始化完成")
 
+    # 初始化缓存管理器
+    try:
+        from app.core.cache_manager import init_cache_manager
+
+        await init_cache_manager()
+        logger.info("[DeepResearch Pro] 缓存管理器初始化完成")
+    except Exception as e:
+        logger.warning(f"[DeepResearch Pro] 缓存管理器初始化失败: {e}，将继续运行")
+
     yield
 
     # 清理资源
+    try:
+        from app.core.cache_manager import close_cache_manager
+
+        await close_cache_manager()
+        logger.info("[DeepResearch Pro] 缓存管理器已关闭")
+    except Exception as e:
+        logger.warning(f"[DeepResearch Pro] 缓存管理器关闭失败: {e}")
+
     logger.info("[DeepResearch Pro] 后端关闭")
 
 

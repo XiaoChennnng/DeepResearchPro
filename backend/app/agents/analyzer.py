@@ -19,19 +19,31 @@ class AnalyzerAgent(BaseAgent):
     深度分析收集的信息，提取有价值的洞察
     """
 
-    ROLE_DESCRIPTION = """你是一个专业的数据分析专家。你的职责是：
-1. 深度分析收集的信息来源
-2. 识别关键趋势、模式和洞察
-3. 提取并验证关键事实
-4. 建立信息之间的关联
-5. 评估信息的可靠性和重要性
+    # 分析框架
+    ANALYSIS_FRAMEWORKS = {
+        "PESTEL": "政治、经济、社会、技术、环境、法律分析框架",
+        "SWOT": "优势、劣势、机遇、威胁分析框架",
+        "5W2H": "何人、何事、何时、何地、何因、如何、何价分析框架",
+        "LogicTree": "逻辑树分解分析框架",
+        "Fishbone": "鱼骨图因果分析框架",
+        "CausalChain": "因果链分析框架",
+        "SystemsThinking": "系统思维分析框架",
+    }
 
-你必须基于证据进行分析，每个结论都要有来源支撑。
+    ROLE_DESCRIPTION = """你是一个专业的数据分析专家和批判性思考者。你的职责是：
+1. 深度分析收集的信息来源，使用专业的分析框架
+2. 识别关键趋势、模式和洞察，进行批判性评估
+3. 提取并验证关键事实，建立因果关系
+4. 建立信息之间的关联，识别矛盾和空白
+5. 评估信息的可靠性和重要性，进行不确定性分析
+
+你必须基于证据进行分析，每个结论都要有来源支撑，并考虑替代解释。
 分析方法：
-- 交叉验证：通过多个来源验证事实
-- 趋势分析：识别时间序列上的变化趋势
-- 因果推理：分析事件之间的因果关系
-- 模式识别：发现数据中的规律性"""
+- 交叉验证：通过多个来源验证事实，识别一致性和矛盾
+- 因果分析：建立因果链，区分相关性和因果性
+- 批判性思维：识别假设前提，考虑反例和边界条件
+- 系统思维：分析要素间的相互作用和反馈循环
+- 不确定性评估：量化分析结论的置信度和适用范围"""
 
     def __init__(
         self,
@@ -143,6 +155,36 @@ class AnalyzerAgent(BaseAgent):
                 success=False, output={"analysis": {}}, errors=[error_msg]
             )
 
+    def _select_analysis_framework(self, query: str, sources: List[Dict]) -> str:
+        """
+        根据研究问题和可用数据选择最合适的分析框架
+        """
+        # 基于问题类型自动选择框架
+        query_lower = query.lower()
+
+        if any(keyword in query_lower for keyword in ["政策", "政府", "法规", "政治"]):
+            return "PESTEL"
+        elif any(
+            keyword in query_lower
+            for keyword in ["优势", "劣势", "机会", "威胁", "竞争力"]
+        ):
+            return "SWOT"
+        elif any(
+            keyword in query_lower for keyword in ["原因", "为什么", "因果", "机制"]
+        ):
+            return "CausalChain"
+        elif any(
+            keyword in query_lower for keyword in ["系统", "复杂", "相互作用", "反馈"]
+        ):
+            return "SystemsThinking"
+        elif any(
+            keyword in query_lower for keyword in ["问题", "改进", "解决", "步骤"]
+        ):
+            return "5W2H"
+        else:
+            # 默认使用逻辑树分析
+            return "LogicTree"
+
     async def _analyze_sources(
         self, sources: List[Dict], query: str, core_context: Dict
     ) -> Dict[str, Any]:
@@ -153,15 +195,18 @@ class AnalyzerAgent(BaseAgent):
         if not self.llm_client:
             return self._simple_analysis(sources)
 
-        # 构建来源描述
+        # 选择合适的分析框架
+        selected_framework = self._select_analysis_framework(query, sources)
+
+        # 构建来源描述（增加内容长度）
         sources_text = "\n\n".join(
             [
                 f"来源 {i + 1}:\n"
                 f"标题: {s.get('title', 'N/A')}\n"
-                f"内容: {s.get('content', 'N/A')[:800]}\n"
+                f"内容: {s.get('content', 'N/A')[:1200]}\n"  # 从800增加到1200
                 f"可信度: {s.get('confidence', 'unknown')}\n"
                 f"关键信息: {s.get('key_information', '')}"
-                for i, s in enumerate(sources[:15])  # 最多15个来源
+                for i, s in enumerate(sources[:20])  # 从15增加到20个来源
             ]
         )
 
@@ -174,7 +219,26 @@ class AnalyzerAgent(BaseAgent):
 研究资料：
 {sources_text}
 
-你的目标是以“博士论文级别”的严谨程度完成分析，
+=== 分析框架 ===
+本次分析将使用 {self.ANALYSIS_FRAMEWORKS[selected_framework]} 框架。
+请在分析过程中明确应用此框架的各个要素。
+
+=== 深度分析要求 ===
+1. **理论框架构建**：明确分析的理论基础和概念框架
+2. **因果分析**：建立清晰的因果链，区分相关性和因果性
+3. **批判性思维**：识别假设前提，考虑反例和替代解释
+4. **不确定性评估**：量化结论的置信度和适用边界
+5. **系统思维**：分析要素间的相互作用和反馈机制
+
+=== 推理过程记录 ===
+对每个重要结论，请记录推理过程：
+- 前提假设
+- 推理步骤
+- 证据支撑
+- 替代解释
+- 不确定性来源
+
+你的目标是以"博士论文级别"的严谨程度完成分析，
 读者假定为顶级学术会议/SSCI/SCI 期刊的评审专家，
 分析需要体现清晰的理论框架、证据链和反驳讨论。
 
@@ -192,11 +256,19 @@ class AnalyzerAgent(BaseAgent):
     ],
     "insights": [
         {{
-            "type": "trend/pattern/correlation/anomaly",
+            "type": "trend/pattern/correlation/anomaly/causal_relationship/systemic_insight",
             "content": "洞察描述",
             "confidence": 0.8,
             "source_indices": [1, 2],
-            "importance": "high/medium/low"
+            "importance": "high/medium/low",
+            "reasoning_chain": {{
+                "assumptions": ["前提假设1", "前提假设2"],
+                "evidence": "支撑证据的详细说明",
+                "alternative_explanations": ["替代解释1", "替代解释2"],
+                "uncertainty_factors": ["不确定性来源1"],
+                "boundary_conditions": "结论的适用边界"
+            }},
+            "framework_application": "如何应用{selected_framework}框架的具体说明"
         }},
         ...
     ],
@@ -236,8 +308,8 @@ class AnalyzerAgent(BaseAgent):
         try:
             response = await self.call_llm(
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.3,
-                max_tokens=8192,
+                temperature=0.7,  # 从0.3提升到0.7，增加创造性和深度思考
+                max_tokens=10000,  # 从8192提升到10000，支持更深入的分析
                 json_mode=True,
             )
 

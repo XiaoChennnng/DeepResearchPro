@@ -72,6 +72,7 @@ class BaseAgent(ABC):
         self.end_time: Optional[datetime] = None
         self.tokens_used: int = 0
         self.api_calls: int = 0
+        self.cache_hits: int = 0
         self.current_subtask: str = ""
         self.output_content: str = ""
 
@@ -194,10 +195,44 @@ class BaseAgent(ABC):
         temperature: float = 0.7,
         max_tokens: int = 4000,
         json_mode: bool = False,
+        use_cache: bool = True,
     ) -> str:
         """LLM调用接口"""
         if not self.llm_client:
             raise ValueError("LLM客户端未设置，无法执行任务")
+
+        # 缓存集成
+        cache_key = None
+        if use_cache:
+            try:
+                from app.core.cache_manager import get_cache_manager
+
+                cache_manager = await get_cache_manager()
+
+                # 生成缓存键：基于消息内容、模型和参数
+                cache_content = {
+                    "messages": messages,
+                    "model": self.model,
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                    "json_mode": json_mode,
+                }
+                import json
+
+                cache_key = cache_manager.generate_key(
+                    json.dumps(cache_content, sort_keys=True), "llm_response"
+                )
+
+                # 检查缓存
+                cached_result = await cache_manager.get(cache_key)
+                if cached_result is not None:
+                    logger.debug(f"[BaseAgent] LLM缓存命中: {cache_key[:16]}...")
+                    # 更新缓存命中统计，不算作API调用
+                    self.cache_hits += 1
+                    return cached_result
+
+            except Exception as e:
+                logger.warning(f"[BaseAgent] 缓存检查失败: {e}，继续正常调用")
 
         # 根据提供商限制max_tokens上限，避免超出API限制
         max_tokens = self._clamp_max_tokens(max_tokens)
@@ -244,7 +279,7 @@ class BaseAgent(ABC):
 
             content = response.choices[0].message.content
 
-            # 【重要】验证响应内容不为空，这是JSON解析失败的主要原因
+            # 验证响应不为空
             if not content or not content.strip():
                 raise ValueError(
                     f"LLM返回空响应，json_mode={json_mode}，max_tokens={max_tokens}，可能API超时或配置有问题"
@@ -273,6 +308,31 @@ class BaseAgent(ABC):
                 )
 
             logger.debug(f"[{self.name}] LLM响应: {content[:200]}...")
+
+            # 缓存结果（异步，不阻塞返回）
+            if use_cache and cache_key:
+                try:
+                    from app.core.cache_manager import get_cache_manager
+
+                    cache_manager = await get_cache_manager()
+                    # LLM响应缓存24小时
+                    asyncio.create_task(
+                        cache_manager.set(
+                            cache_key,
+                            content,
+                            ttl_hours=24,
+                            cache_type="llm_response",
+                            metadata={
+                                "model": self.model,
+                                "temperature": temperature,
+                                "max_tokens": max_tokens,
+                                "json_mode": json_mode,
+                                "agent_type": self.agent_type.value,
+                            },
+                        )
+                    )
+                except Exception as e:
+                    logger.warning(f"[BaseAgent] 缓存存储失败: {e}，不影响正常流程")
 
             return content
 

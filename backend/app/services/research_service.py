@@ -26,7 +26,8 @@ from app.core.logging import logger
 from app.core.config import settings
 from app.core.llm_factory import get_llm_factory, configure_llm, LLMFactory
 from app.api.endpoints.websocket import get_ws_manager
-from app.agents.workflow import ResearchWorkflow
+# 延迟导入避免循环依赖
+# from app.agents.workflow import ResearchWorkflow
 
 
 class ResearchService:
@@ -51,14 +52,24 @@ class ResearchService:
             # 通过WebSocket广播状态更新
             asyncio.create_task(self._broadcast_agent_status(status_update))
 
-        # 初始化工作流
-        self.workflow = ResearchWorkflow(
-            llm_client=self.llm_client,
-            search_tools={"duckduckgo": True},  # 启用DuckDuckGo搜索
-            model=self.model,
-            llm_factory=self.llm_factory,
-            status_callback=status_callback,
-        )
+        # 延迟初始化工作流，避免循环导入
+        self._workflow = None
+        self._workflow_config = {
+            "llm_client": self.llm_client,
+            "search_tools": {"duckduckgo": True},  # 启用DuckDuckGo搜索
+            "model": self.model,
+            "llm_factory": self.llm_factory,
+            "status_callback": status_callback,
+        }
+
+    @property
+    def workflow(self):
+        """动态获取工作流实例"""
+        if self._workflow is None:
+            from app.agents.workflow import ResearchWorkflow  # 延迟导入
+
+            self._workflow = ResearchWorkflow(**self._workflow_config)
+        return self._workflow
 
     async def _broadcast_agent_status(self, status_update: Dict[str, Any]) -> None:
         """广播Agent状态更新到WebSocket客户端"""

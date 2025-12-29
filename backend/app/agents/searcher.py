@@ -59,24 +59,86 @@ class SearcherAgent(BaseAgent):
         "framework",
     ]
 
-    # 权威域名列表（用于可信度评估）
+    # 权威域名列表（扩展版，包含主流学术期刊和机构）
     AUTHORITATIVE_DOMAINS = [
+        # 教育机构
         ".edu",
+        ".ac.uk",
+        ".ac.cn",
+        ".edu.au",
+        ".edu.ca",
+        ".edu.sg",
+        # 政府机构
         ".gov",
-        ".ac.",
+        ".gov.cn",
+        ".gov.uk",
+        ".gov.au",
+        # 国际组织
         ".org",
+        ".int",
+        ".eu",
+        # 主流学术搜索引擎
+        "scholar.google.com",
         "arxiv.org",
-        "scholar.google",
+        "semanticscholar.org",
         "researchgate.net",
+        "academia.edu",
+        "ssrn.com",
+        # 顶级学术期刊
         "nature.com",
         "science.org",
+        "sciencemag.org",
+        "cell.com",
+        "thelancet.com",
+        "nejm.org",
+        "pnas.org",
+        # 主要学术出版社
         "springer.com",
         "wiley.com",
+        "oup.com",
+        "cambridge.org",
+        "taylorfrancis.com",
+        "sagepub.com",
+        "emerald.com",
+        # 专业学会和组织
         "ieee.org",
         "acm.org",
-        "ssrn.com",
-        "cnki.net",
-        "wanfangdata.com",
+        "aps.org",
+        "aip.org",
+        "iop.org",
+        "rsc.org",
+        "acs.org",
+        # 中文学术资源 - 扩展支持
+        "cnki.net",  # 知网
+        "wanfangdata.com",  # 万方数据
+        "cqvip.com",  # 维普网
+        "sciencenet.cn",  # 中国科学网
+        "xueshu.com",  # 学术搜索
+        "d.cnki.net",  # 知网博士论文
+        "cdmd.cnki.net",  # 知网硕士论文
+        "cpfd.cnki.net",  # 知网会议论文
+        "yuanjian.cnki.net",  # 知网期刊
+        "qikan.cqvip.com",  # 维普期刊
+        "www.wanfangdata.com.cn",  # 万方数据
+        "www.cnki.com.cn",  # 知网主站
+        "scholar.cnki.net",  # 知网学术搜索
+        "epub.cnki.net",  # 知网电子期刊
+        "www.lib.pku.edu.cn",  # 北京大学图书馆
+        "www.lib.tsinghua.edu.cn",  # 清华大学图书馆
+        "www.lib.zju.edu.cn",  # 浙江大学图书馆
+        "www.lib.fudan.edu.cn",  # 复旦大学图书馆
+        "www.lib.sjtu.edu.cn",  # 上海交通大学图书馆
+        "www.lib.ustc.edu.cn",  # 中国科学技术大学图书馆
+        "www.nlc.cn",  # 国家图书馆
+        "www.sslibrary.com",  # 上海图书馆
+        "www.zjlib.cn",  # 浙江图书馆
+        "www.gdlibrary.com",  # 广东省立中山图书馆
+        # 其他知名学术平台
+        "pubmed.ncbi.nlm.nih.gov",
+        "jstor.org",
+        "sciencedirect.com",
+        "webofscience.com",
+        "scopus.com",
     ]
 
     # 低质量/不相关来源的域名黑名单
@@ -97,7 +159,218 @@ class SearcherAgent(BaseAgent):
     ]
 
     # 相关性阈值
-    RELEVANCE_THRESHOLD = 0.4  # 低于这个分数的来源会被过滤
+    RELEVANCE_THRESHOLD = 0.6  # 低于这个分数的来源会被过滤，提高质量标准
+
+    # 搜索引擎配置
+    SEARCH_ENGINES = {
+        "duckduckgo": {
+            "name": "DuckDuckGo",
+            "enabled": True,
+            "max_results": 8,
+            "priority": 1,
+        },
+        "google_scholar": {
+            "name": "Google Scholar",
+            "enabled": True,
+            "max_results": 10,
+            "priority": 2,
+            "academic_focus": True,
+        },
+        "arxiv": {
+            "name": "arXiv",
+            "enabled": True,
+            "max_results": 8,
+            "priority": 3,
+            "academic_focus": True,
+            "categories": ["cs", "math", "physics", "q-bio", "stat"],
+        },
+        "semantic_scholar": {
+            "name": "Semantic Scholar",
+            "enabled": True,
+            "max_results": 8,
+            "priority": 4,
+            "academic_focus": True,
+        },
+        "pubmed": {
+            "name": "PubMed",
+            "enabled": True,
+            "max_results": 6,
+            "priority": 5,
+            "academic_focus": True,
+            "medical_focus": True,
+        },
+        "baidu_scholar": {
+            "name": "百度学术",
+            "enabled": True,
+            "max_results": 8,
+            "priority": 6,
+            "academic_focus": True,
+            "chinese_focus": True,
+        },
+        "cnki": {
+            "name": "知网学术搜索",
+            "enabled": True,
+            "max_results": 8,
+            "priority": 7,
+            "academic_focus": True,
+            "chinese_focus": True,
+        },
+        "wanfang": {
+            "name": "万方数据",
+            "enabled": True,
+            "max_results": 6,
+            "priority": 8,
+            "academic_focus": True,
+            "chinese_focus": True,
+        },
+        "weipu": {
+            "name": "维普网",
+            "enabled": True,
+            "max_results": 6,
+            "priority": 9,
+            "academic_focus": True,
+            "chinese_focus": True,
+        },
+    }
+
+    # 学术期刊配置
+    ACADEMIC_JOURNALS = {
+        # 顶级综合期刊
+        "nature": {"name": "Nature", "domain": "nature.com", "impact_factor": 49.962},
+        "science": {
+            "name": "Science",
+            "domain": "science.org",
+            "impact_factor": 41.846,
+        },
+        "cell": {"name": "Cell", "domain": "cell.com", "impact_factor": 38.637},
+        # 医学期刊
+        "nejm": {
+            "name": "New England Journal of Medicine",
+            "domain": "nejm.org",
+            "impact_factor": 158.5,
+        },
+        "lancet": {
+            "name": "The Lancet",
+            "domain": "thelancet.com",
+            "impact_factor": 115.3,
+        },
+        "jama": {"name": "JAMA", "domain": "jamanetwork.com", "impact_factor": 81.7},
+        # 计算机科学
+        "ieee_tse": {
+            "name": "IEEE Transactions on Software Engineering",
+            "domain": "computer.org",
+            "impact_factor": 9.6,
+        },
+        "cacm": {
+            "name": "Communications of the ACM",
+            "domain": "acm.org",
+            "impact_factor": 8.9,
+        },
+        "jmlr": {
+            "name": "Journal of Machine Learning Research",
+            "domain": "jmlr.org",
+            "impact_factor": 6.8,
+        },
+        # 社会科学
+        "apsr": {
+            "name": "American Political Science Review",
+            "domain": "cambridge.org",
+            "impact_factor": 5.2,
+        },
+        "asr": {
+            "name": "American Sociological Review",
+            "domain": "asanet.org",
+            "impact_factor": 4.8,
+        },
+        "jep": {
+            "name": "Journal of Economic Perspectives",
+            "domain": "aeaweb.org",
+            "impact_factor": 8.7,
+        },
+        # 中国期刊
+        "caj": {"name": "中国科学", "domain": "sciencenet.cn", "impact_factor": 4.2},
+        "caj_tech": {
+            "name": "中国科技论文",
+            "domain": "cajcd.edu.cn",
+            "impact_factor": 3.1,
+        },
+        # 中国顶级学术期刊扩展
+        "acta_physica_sinica": {
+            "name": "物理学报",
+            "domain": "wuli.ac.cn",
+            "impact_factor": 2.1,
+        },
+        "chinese_physics_letters": {
+            "name": "中国物理快报",
+            "domain": "cpl.iphy.ac.cn",
+            "impact_factor": 1.8,
+        },
+        "acta_mathematica_sinica": {
+            "name": "数学学报",
+            "domain": "amss.ac.cn",
+            "impact_factor": 1.2,
+        },
+        "journal_computer_research": {
+            "name": "计算机研究与发展",
+            "domain": "ict.ac.cn",
+            "impact_factor": 3.2,
+        },
+        "china_economic_review": {
+            "name": "经济学(季刊)",
+            "domain": "ecq.ac.cn",
+            "impact_factor": 2.8,
+        },
+        "management_world": {
+            "name": "管理世界",
+            "domain": "magtech.com.cn",
+            "impact_factor": 4.1,
+        },
+        "economic_research_journal": {
+            "name": "经济研究",
+            "domain": "ier.ac.cn",
+            "impact_factor": 5.2,
+        },
+        "china_social_sciences": {
+            "name": "中国社会科学",
+            "domain": "cass.cn",
+            "impact_factor": 2.9,
+        },
+        "philosophical_researches": {
+            "name": "哲学研究",
+            "domain": "cass.cn",
+            "impact_factor": 1.8,
+        },
+        "historical_research": {
+            "name": "历史研究",
+            "domain": "cass.cn",
+            "impact_factor": 2.1,
+        },
+        "literary_review": {
+            "name": "文学评论",
+            "domain": "cass.cn",
+            "impact_factor": 1.5,
+        },
+        "foreign_languages": {
+            "name": "外国语",
+            "domain": "flac.com.cn",
+            "impact_factor": 1.2,
+        },
+        "tongji_university_journal": {
+            "name": "同济大学学报(自然科学版)",
+            "domain": "tongji.edu.cn",
+            "impact_factor": 1.1,
+        },
+        "fudan_journal_social": {
+            "name": "复旦学报(社会科学版)",
+            "domain": "fudan.edu.cn",
+            "impact_factor": 2.3,
+        },
+        "tsinghua_journal_social": {
+            "name": "清华大学学报(哲学社会科学版)",
+            "domain": "tsinghua.edu.cn",
+            "impact_factor": 2.0,
+        },
+    }
 
     def __init__(
         self,
@@ -106,7 +379,7 @@ class SearcherAgent(BaseAgent):
         model: Optional[str] = None,
         llm_factory=None,
         status_callback=None,
-        max_iterations: int = 3,  # 迭代搜索最大轮次
+        max_iterations: int = 5,  # 迭代搜索最大轮次，提高搜索深度
     ):
         super().__init__(
             agent_type=AgentType.SEARCHER,
@@ -126,6 +399,13 @@ class SearcherAgent(BaseAgent):
         self._opposing_views_found = False  # 是否找到对立观点
         self._original_query = ""  # 保存原始问题用于相关性判断
         self._core_keywords: List[str] = []  # 核心关键词列表
+
+        # 初始化搜索引擎状态
+        self._enabled_engines = {
+            name: config
+            for name, config in self.SEARCH_ENGINES.items()
+            if config.get("enabled", False)
+        }
 
     def set_search_tools(self, tools: Dict[str, Any]) -> None:
         """设置搜索工具"""
@@ -230,7 +510,9 @@ class SearcherAgent(BaseAgent):
 
                     # 学术搜索
                     if needs_academic:
-                        academic_sources = await self._search_academic(search_query)
+                        academic_sources = await self._perform_comprehensive_search(
+                            search_query, academic_focus=True
+                        )
                         # 初步过滤
                         academic_sources = self._quick_filter_sources(academic_sources)
                         for source in academic_sources:
@@ -937,90 +1219,6 @@ class SearcherAgent(BaseAgent):
             logger.error(f"[SearcherAgent] Tavily搜索出错: {e}")
             return []
 
-    async def _search_duckduckgo(self, query: str) -> List[Dict[str, Any]]:
-        """使用DuckDuckGo搜索（带重试机制）"""
-        try:
-            from ddgs import DDGS
-            import time
-
-            # 重试机制
-            max_retries = 3
-            retry_delay = 2  # 秒
-
-            for attempt in range(max_retries):
-                try:
-                    # 在线程池中运行同步的DDGS.text()方法
-                    def search_sync():
-                        with DDGS(timeout=10) as ddgs:  # 设置10秒超时
-                            return ddgs.text(query, max_results=5)
-
-                    # 使用asyncio.to_thread()在后台线程中运行同步搜索，设置整体超时
-                    results = await asyncio.wait_for(
-                        asyncio.to_thread(search_sync),
-                        timeout=15,  # 15秒超时
-                    )
-
-                    sources = []
-                    for result in results:
-                        sources.append(
-                            {
-                                "title": result.get("title", ""),
-                                "url": result.get("href", ""),
-                                "content": result.get("body", ""),
-                                "source_type": "web",
-                                "confidence": "medium",
-                                "relevance_score": 0.5,
-                                "search_query": query,
-                            }
-                        )
-
-                    return sources
-
-                except asyncio.TimeoutError:
-                    if attempt < max_retries - 1:
-                        logger.warning(
-                            f"[SearcherAgent] DuckDuckGo搜索超时，重试 {attempt + 1}/{max_retries}"
-                        )
-                        await asyncio.sleep(retry_delay)
-                        continue
-                    else:
-                        logger.error(
-                            f"[SearcherAgent] DuckDuckGo搜索在 {max_retries} 次尝试后仍超时"
-                        )
-                        return []
-                except Exception as e:
-                    if attempt < max_retries - 1:
-                        logger.warning(
-                            f"[SearcherAgent] DuckDuckGo搜索失败，重试 {attempt + 1}/{max_retries}: {e}"
-                        )
-                        await asyncio.sleep(retry_delay)
-                        continue
-                    else:
-                        logger.error(
-                            f"[SearcherAgent] DuckDuckGo搜索在 {max_retries} 次尝试后失败: {e}"
-                        )
-                        return []
-
-        except ImportError:
-            logger.warning("[SearcherAgent] ddgs未安装")
-            return []
-        except Exception as e:
-            logger.error(f"[SearcherAgent] DuckDuckGo搜索出错: {e}")
-            return []
-
-    def _deduplicate_sources(self, sources: List[Dict]) -> List[Dict]:
-        """去重来源"""
-        seen_urls = set()
-        unique = []
-        for source in sources:
-            url = source.get("url", "")
-            if url and url not in seen_urls:
-                seen_urls.add(url)
-                unique.append(source)
-            elif not url:
-                unique.append(source)
-        return unique
-
     # ==================== 小陈加强版：新增方法 ====================
 
     def _needs_academic_search(self, query: str) -> bool:
@@ -1044,41 +1242,115 @@ class SearcherAgent(BaseAgent):
                 return True
         return False
 
-    async def _search_academic(self, query: str) -> List[Dict[str, Any]]:
+    async def _perform_comprehensive_search(
+        self, query: str, academic_focus: bool = False
+    ) -> List[Dict[str, Any]]:
         """
-        学术搜索（小陈加强版）
-        小陈说：优先搜索学术资源，arXiv、Google Scholar等
+        执行全面的多搜索引擎搜索
+        支持学术和通用网页搜索
         """
+        all_sources = []
+        search_tasks = []
+
+        # 根据学术焦点和语言选择搜索引擎
+        if academic_focus:
+            # 学术搜索：优先使用学术搜索引擎
+            engines_to_use = [
+                name
+                for name, config in self._enabled_engines.items()
+                if config.get("academic_focus", False)
+            ]
+            # 如果查询包含中文，优先使用中文搜索引擎
+            if any("\u4e00" <= char <= "\u9fff" for char in query):
+                chinese_engines = [
+                    name
+                    for name, config in self._enabled_engines.items()
+                    if config.get("chinese_focus", False)
+                ]
+                # 将中文搜索引擎排在前面
+                engines_to_use = chinese_engines + [
+                    e for e in engines_to_use if e not in chinese_engines
+                ]
+        else:
+            # 通用搜索：使用所有启用搜索引擎
+            engines_to_use = list(self._enabled_engines.keys())
+
+        # 创建并行搜索任务
+        for engine_name in engines_to_use:
+            if engine_name == "duckduckgo":
+                search_tasks.append(self._search_duckduckgo(query, academic_focus))
+            elif engine_name == "google_scholar":
+                search_tasks.append(self._search_google_scholar(query))
+            elif engine_name == "arxiv":
+                search_tasks.append(self._search_arxiv(query))
+            elif engine_name == "semantic_scholar":
+                search_tasks.append(self._search_semantic_scholar(query))
+            elif engine_name == "pubmed":
+                search_tasks.append(self._search_pubmed(query))
+            elif engine_name == "baidu_scholar":
+                search_tasks.append(self._search_baidu_scholar(query))
+            elif engine_name == "cnki":
+                search_tasks.append(self._search_cnki(query))
+            elif engine_name == "wanfang":
+                search_tasks.append(self._search_wanfang(query))
+            elif engine_name == "weipu":
+                search_tasks.append(self._search_weipu(query))
+
+        # 并行执行搜索
+        if search_tasks:
+            try:
+                search_results = await asyncio.gather(
+                    *search_tasks, return_exceptions=True
+                )
+
+                for result in search_results:
+                    if isinstance(result, list):
+                        all_sources.extend(result)
+                    elif isinstance(result, Exception):
+                        logger.warning(f"[SearcherAgent] 搜索任务失败: {result}")
+            except Exception as e:
+                logger.error(f"[SearcherAgent] 并行搜索失败: {e}")
+
+        # 去重和排序
+        unique_sources = self._deduplicate_sources(all_sources)
+        ranked_sources = self._rank_sources_by_quality(unique_sources)
+
+        return ranked_sources[:50]  # 限制返回数量
+
+    async def _search_duckduckgo(
+        self, query: str, academic_focus: bool = False
+    ) -> List[Dict[str, Any]]:
+        """DuckDuckGo搜索"""
         sources = []
 
-        # 构建学术搜索查询
-        academic_queries = [
-            f"{query} research paper",
-            f"{query} academic study",
-            f"{query} site:arxiv.org",
-            f"{query} site:scholar.google.com",
-        ]
-
-        # 使用DuckDuckGo搜索学术内容
         try:
             from ddgs import DDGS
 
-            def search_academic_sync():
+            # 构建查询
+            if academic_focus:
+                queries = [
+                    f"{query} research paper academic study",
+                    f"{query} scholarly article peer reviewed",
+                    f"{query} systematic review meta analysis",
+                ]
+            else:
+                queries = [query]
+
+            def search_sync():
                 results = []
                 with DDGS() as ddgs:
-                    for aq in academic_queries[:2]:  # 限制查询数量
+                    for q in queries:
                         try:
-                            r = ddgs.text(aq, max_results=3)
+                            r = ddgs.text(q, max_results=8)
                             results.extend(r)
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.warning(f"DuckDuckGo查询失败: {q} - {e}")
                 return results
 
-            results = await asyncio.to_thread(search_academic_sync)
+            results = await asyncio.to_thread(search_sync)
 
             for result in results:
                 url = result.get("href", "")
-                # 判断是否为权威学术来源
                 is_authoritative = self._is_authoritative_source(url)
 
                 sources.append(
@@ -1089,25 +1361,499 @@ class SearcherAgent(BaseAgent):
                         "source_type": "academic" if is_authoritative else "web",
                         "confidence": "high" if is_authoritative else "medium",
                         "relevance_score": 0.8 if is_authoritative else 0.5,
-                        "search_query": query,
+                        "search_engine": "duckduckgo",
                         "is_primary_source": is_authoritative,
                     }
                 )
 
-                # 记录域名
-                if url:
-                    try:
-                        from urllib.parse import urlparse
+        except ImportError:
+            logger.warning("[SearcherAgent] DuckDuckGo搜索未启用")
+        except Exception as e:
+            logger.error(f"[SearcherAgent] DuckDuckGo搜索失败: {e}")
 
-                        domain = urlparse(url).netloc
-                        self._source_domains.add(domain)
+        return sources
+
+    async def _search_google_scholar(self, query: str) -> List[Dict[str, Any]]:
+        """Google Scholar搜索"""
+        sources = []
+
+        try:
+            # 使用学术API或模拟搜索
+            scholar_queries = [
+                f"{query} scholarly article",
+                f"{query} peer reviewed journal",
+                f"{query} academic research",
+            ]
+
+            # 这里可以集成Google Scholar API
+            # 目前使用DuckDuckGo作为替代
+            from ddgs import DDGS
+
+            def search_sync():
+                results = []
+                with DDGS() as ddgs:
+                    for q in scholar_queries:
+                        try:
+                            # 添加scholar限制
+                            scholar_q = f"{q} site:scholar.google.com"
+                            r = ddgs.text(scholar_q, max_results=6)
+                            results.extend(r)
+                        except Exception:
+                            pass
+                return results
+
+            results = await asyncio.to_thread(search_sync)
+
+            for result in results:
+                url = result.get("href", "")
+                sources.append(
+                    {
+                        "title": result.get("title", ""),
+                        "url": url,
+                        "content": result.get("body", ""),
+                        "source_type": "academic",
+                        "confidence": "high",
+                        "relevance_score": 0.9,
+                        "search_engine": "google_scholar",
+                        "is_primary_source": True,
+                    }
+                )
+
+        except Exception as e:
+            logger.warning(f"[SearcherAgent] Google Scholar搜索失败: {e}")
+
+        return sources
+
+    async def _search_arxiv(self, query: str) -> List[Dict[str, Any]]:
+        """arXiv搜索"""
+        sources = []
+
+        try:
+            # 这里可以集成arXiv API
+            # 目前使用DuckDuckGo作为替代
+            from ddgs import DDGS
+
+            arxiv_queries = [
+                f"{query} site:arxiv.org",
+                f"{query} arxiv preprint",
+            ]
+
+            def search_sync():
+                results = []
+                with DDGS() as ddgs:
+                    for q in arxiv_queries:
+                        try:
+                            r = ddgs.text(q, max_results=5)
+                            results.extend(r)
+                        except Exception:
+                            pass
+                return results
+
+            results = await asyncio.to_thread(search_sync)
+
+            for result in results:
+                url = result.get("href", "")
+                sources.append(
+                    {
+                        "title": result.get("title", ""),
+                        "url": url,
+                        "content": result.get("body", ""),
+                        "source_type": "academic",
+                        "confidence": "high",
+                        "relevance_score": 0.8,
+                        "search_engine": "arxiv",
+                        "is_primary_source": True,
+                    }
+                )
+
+        except Exception as e:
+            logger.warning(f"[SearcherAgent] arXiv搜索失败: {e}")
+
+        return sources
+
+    async def _search_semantic_scholar(self, query: str) -> List[Dict[str, Any]]:
+        """Semantic Scholar搜索"""
+        sources = []
+
+        try:
+            # 使用DuckDuckGo作为替代
+            from ddgs import DDGS
+
+            def search_sync():
+                results = []
+                with DDGS() as ddgs:
+                    q = f"{query} site:semanticscholar.org"
+                    try:
+                        r = ddgs.text(q, max_results=5)
+                        results.extend(r)
                     except Exception:
                         pass
+                return results
 
-        except ImportError:
-            logger.warning("[SearcherAgent] ddgs未安装，跳过学术搜索")
+            results = await asyncio.to_thread(search_sync)
+
+            for result in results:
+                url = result.get("href", "")
+                sources.append(
+                    {
+                        "title": result.get("title", ""),
+                        "url": url,
+                        "content": result.get("body", ""),
+                        "source_type": "academic",
+                        "confidence": "high",
+                        "relevance_score": 0.8,
+                        "search_engine": "semantic_scholar",
+                        "is_primary_source": True,
+                    }
+                )
+
         except Exception as e:
-            logger.warning(f"[SearcherAgent] 学术搜索失败: {e}")
+            logger.warning(f"[SearcherAgent] Semantic Scholar搜索失败: {e}")
+
+        return sources
+
+    async def _search_pubmed(self, query: str) -> List[Dict[str, Any]]:
+        """PubMed搜索"""
+        sources = []
+
+        try:
+            # 使用DuckDuckGo作为替代
+            from ddgs import DDGS
+
+            def search_sync():
+                results = []
+                with DDGS() as ddgs:
+                    q = f"{query} site:pubmed.ncbi.nlm.nih.gov"
+                    try:
+                        r = ddgs.text(q, max_results=4)
+                        results.extend(r)
+                    except Exception:
+                        pass
+                return results
+
+            results = await asyncio.to_thread(search_sync)
+
+            for result in results:
+                url = result.get("href", "")
+                sources.append(
+                    {
+                        "title": result.get("title", ""),
+                        "url": url,
+                        "content": result.get("body", ""),
+                        "source_type": "academic",
+                        "confidence": "high",
+                        "relevance_score": 0.8,
+                        "search_engine": "pubmed",
+                        "is_primary_source": True,
+                    }
+                )
+
+        except Exception as e:
+            logger.warning(f"[SearcherAgent] PubMed搜索失败: {e}")
+
+        return sources
+
+    async def _search_baidu_scholar(self, query: str) -> List[Dict[str, Any]]:
+        """百度学术搜索"""
+        sources = []
+
+        try:
+            # 使用DuckDuckGo作为百度学术的替代搜索
+            from ddgs import DDGS
+
+            def search_sync():
+                results = []
+                with DDGS() as ddgs:
+                    # 百度学术搜索查询
+                    queries = [
+                        f"{query} site:xueshu.baidu.com",
+                        f"{query} site:scholar.baidu.com",
+                    ]
+
+                    for q in queries:
+                        try:
+                            r = ddgs.text(q, max_results=5)
+                            results.extend(r)
+                        except Exception:
+                            pass
+                return results
+
+            results = await asyncio.to_thread(search_sync)
+
+            for result in results:
+                url = result.get("href", "")
+                sources.append(
+                    {
+                        "title": result.get("title", ""),
+                        "url": url,
+                        "content": result.get("body", ""),
+                        "source_type": "academic",
+                        "confidence": "high",
+                        "relevance_score": 0.8,
+                        "search_engine": "baidu_scholar",
+                        "is_primary_source": True,
+                        "language": "zh",
+                    }
+                )
+
+        except Exception as e:
+            logger.warning(f"[SearcherAgent] 百度学术搜索失败: {e}")
+
+        return sources
+
+    async def _search_cnki(self, query: str) -> List[Dict[str, Any]]:
+        """知网学术搜索"""
+        sources = []
+
+        try:
+            from ddgs import DDGS
+
+            def search_sync():
+                results = []
+                with DDGS() as ddgs:
+                    # 知网搜索查询
+                    queries = [
+                        f"{query} site:cnki.net",
+                        f"{query} site:scholar.cnki.net",
+                        f"{query} site:epub.cnki.net",
+                    ]
+
+                    for q in queries:
+                        try:
+                            r = ddgs.text(q, max_results=6)
+                            results.extend(r)
+                        except Exception:
+                            pass
+                return results
+
+            results = await asyncio.to_thread(search_sync)
+
+            for result in results:
+                url = result.get("href", "")
+                sources.append(
+                    {
+                        "title": result.get("title", ""),
+                        "url": url,
+                        "content": result.get("body", ""),
+                        "source_type": "academic",
+                        "confidence": "very_high",
+                        "relevance_score": 0.95,
+                        "search_engine": "cnki",
+                        "is_primary_source": True,
+                        "language": "zh",
+                    }
+                )
+
+        except Exception as e:
+            logger.warning(f"[SearcherAgent] 知网搜索失败: {e}")
+
+        return sources
+
+    async def _search_wanfang(self, query: str) -> List[Dict[str, Any]]:
+        """万方数据搜索"""
+        sources = []
+
+        try:
+            from ddgs import DDGS
+
+            def search_sync():
+                results = []
+                with DDGS() as ddgs:
+                    q = f"{query} site:wanfangdata.com"
+                    try:
+                        r = ddgs.text(q, max_results=4)
+                        results.extend(r)
+                    except Exception:
+                        pass
+                return results
+
+            results = await asyncio.to_thread(search_sync)
+
+            for result in results:
+                url = result.get("href", "")
+                sources.append(
+                    {
+                        "title": result.get("title", ""),
+                        "url": url,
+                        "content": result.get("body", ""),
+                        "source_type": "academic",
+                        "confidence": "high",
+                        "relevance_score": 0.8,
+                        "search_engine": "wanfang",
+                        "is_primary_source": True,
+                        "language": "zh",
+                    }
+                )
+
+        except Exception as e:
+            logger.warning(f"[SearcherAgent] 万方数据搜索失败: {e}")
+
+        return sources
+
+    async def _search_weipu(self, query: str) -> List[Dict[str, Any]]:
+        """维普网搜索"""
+        sources = []
+
+        try:
+            from ddgs import DDGS
+
+            def search_sync():
+                results = []
+                with DDGS() as ddgs:
+                    q = f"{query} site:cqvip.com"
+                    try:
+                        r = ddgs.text(q, max_results=4)
+                        results.extend(r)
+                    except Exception:
+                        pass
+                return results
+
+            results = await asyncio.to_thread(search_sync)
+
+            for result in results:
+                url = result.get("href", "")
+                sources.append(
+                    {
+                        "title": result.get("title", ""),
+                        "url": url,
+                        "content": result.get("body", ""),
+                        "source_type": "academic",
+                        "confidence": "high",
+                        "relevance_score": 0.8,
+                        "search_engine": "weipu",
+                        "is_primary_source": True,
+                        "language": "zh",
+                    }
+                )
+
+        except Exception as e:
+            logger.warning(f"[SearcherAgent] 维普网搜索失败: {e}")
+
+        return sources
+
+    def _deduplicate_sources(
+        self, sources: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """去重搜索结果"""
+        seen_urls = set()
+        unique_sources = []
+
+        for source in sources:
+            url = source.get("url", "").strip()
+            if url and url not in seen_urls:
+                seen_urls.add(url)
+                unique_sources.append(source)
+
+        return unique_sources
+
+    def _rank_sources_by_quality(
+        self, sources: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """按质量对来源进行排序"""
+
+        def get_source_score(source: Dict[str, Any]) -> float:
+            score = 0
+
+            # 基础相关性分数
+            score += source.get("relevance_score", 0) * 40
+
+            # 可信度加成
+            confidence = source.get("confidence", "low")
+            if confidence == "very_high":
+                score += 30
+            elif confidence == "high":
+                score += 20
+            elif confidence == "medium":
+                score += 10
+
+            # 学术期刊加成
+            if source.get("source_type") == "academic_journal":
+                impact_factor = source.get("impact_factor", 0)
+                score += min(impact_factor * 2, 20)  # 最高20分
+
+            # 搜索引擎权重
+            engine_priority = {
+                "google_scholar": 15,
+                "arxiv": 12,
+                "semantic_scholar": 10,
+                "pubmed": 10,
+                "cnki": 14,  # 知网权重较高
+                "baidu_scholar": 13,  # 百度学术权重较高
+                "wanfang": 11,
+                "weipu": 11,
+                "academic_journals": 8,
+                "duckduckgo": 5,
+            }
+            engine = source.get("search_engine", "")
+            score += engine_priority.get(engine, 0)
+
+            # 语言匹配加成（中文查询使用中文来源）
+            language = source.get("language", "")
+            if language == "zh":
+                score += 3  # 中文来源加成
+
+            return score
+
+        # 按分数排序
+        return sorted(sources, key=get_source_score, reverse=True)
+
+    async def _search_academic_journals(
+        self, query: str, target_journals: List[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        专门搜索指定学术期刊
+        """
+        sources = []
+        journals_to_search = target_journals or list(self.ACADEMIC_JOURNALS.keys())
+
+        try:
+            from ddgs import DDGS
+
+            def search_sync():
+                results = []
+                with DDGS() as ddgs:
+                    for journal_key in journals_to_search[:5]:  # 限制期刊数量
+                        journal = self.ACADEMIC_JOURNALS.get(journal_key, {})
+                        domain = journal.get("domain", "")
+
+                        if domain:
+                            q = f"{query} site:{domain}"
+                            try:
+                                r = ddgs.text(q, max_results=3)
+                                for result in r:
+                                    result["_journal"] = journal.get("name", "")
+                                    result["_impact_factor"] = journal.get(
+                                        "impact_factor", 0
+                                    )
+                                results.extend(r)
+                            except Exception:
+                                pass
+                return results
+
+            results = await asyncio.to_thread(search_sync)
+
+            for result in results:
+                url = result.get("href", "")
+                journal_name = result.get("_journal", "")
+                impact_factor = result.get("_impact_factor", 0)
+
+                sources.append(
+                    {
+                        "title": result.get("title", ""),
+                        "url": url,
+                        "content": result.get("body", ""),
+                        "source_type": "academic_journal",
+                        "confidence": "very_high" if impact_factor > 10 else "high",
+                        "relevance_score": 0.95,
+                        "search_engine": "academic_journals",
+                        "journal_name": journal_name,
+                        "impact_factor": impact_factor,
+                        "is_primary_source": True,
+                    }
+                )
+
+        except Exception as e:
+            logger.warning(f"[SearcherAgent] 学术期刊搜索失败: {e}")
 
         return sources
 
@@ -1467,7 +2213,9 @@ class SearcherAgent(BaseAgent):
             for tq in trace_queries[:2]:
                 if tq not in self._searched_queries:
                     self._searched_queries.add(tq)
-                    sources = await self._search_academic(tq)
+                    sources = await self._perform_comprehensive_search(
+                        tq, academic_focus=True
+                    )
                     # 标记为溯源来源
                     for s in sources:
                         s["is_traced_source"] = True

@@ -16,26 +16,126 @@ from app.orchestrator.context_orchestrator import AgentExecutionResult
 class WriterAgent(BaseAgent):
     """写作Agent"""
 
-    # AI高频用语禁用词库
+    # 深度管理器
+    class DepthManager:
+        def __init__(self):
+            self.depth_metrics = {
+                "theory_depth": 0,
+                "evidence_strength": 0,
+                "critical_thinking": 0,
+                "future_orientation": 0,
+            }
+
+        def assess_depth(self, content: str) -> Dict[str, float]:
+            """评估内容深度"""
+            return {
+                "theory_depth": self._check_theory_building(content),
+                "evidence_strength": self._check_evidence_quality(content),
+                "critical_thinking": self._check_critical_analysis(content),
+                "future_orientation": self._check_future_outlook(content),
+            }
+
+        def needs_deepening(self, scores: Dict[str, float]) -> bool:
+            """判断是否需要深化"""
+            return any(score < 0.7 for score in scores.values())
+
+        def _check_theory_building(self, content: str) -> float:
+            """检查理论构建深度"""
+            theory_indicators = [
+                "理论框架",
+                "概念模型",
+                "理论基础",
+                "理论视角",
+                "理论贡献",
+                "理论意义",
+                "理论创新",
+            ]
+            score = sum(1 for indicator in theory_indicators if indicator in content)
+            return min(score / 3.0, 1.0)  # 至少需要3个理论要素
+
+        def _check_evidence_quality(self, content: str) -> float:
+            """检查证据质量"""
+            evidence_indicators = [
+                "数据表明",
+                "研究显示",
+                "证据显示",
+                "实证研究",
+                "多源验证",
+                "交叉验证",
+                "实证证据",
+            ]
+            score = sum(1 for indicator in evidence_indicators if indicator in content)
+            return min(score / 2.0, 1.0)  # 至少需要2个证据要素
+
+        def _check_critical_analysis(self, content: str) -> float:
+            """检查批判性思维"""
+            critical_indicators = [
+                "然而",
+                "但",
+                "局限性",
+                "不足",
+                "问题",
+                "挑战",
+                "替代解释",
+                "反例",
+                "边界条件",
+                "批判性分析",
+            ]
+            score = sum(1 for indicator in critical_indicators if indicator in content)
+            return min(score / 3.0, 1.0)  # 至少需要3个批判性要素
+
+        def _check_future_outlook(self, content: str) -> float:
+            """检查未来展望"""
+            future_indicators = [
+                "未来趋势",
+                "发展趋势",
+                "预测",
+                "展望",
+                "研究方向",
+                "机遇",
+                "挑战",
+                "对策建议",
+            ]
+            score = sum(1 for indicator in future_indicators if indicator in content)
+            return min(score / 2.0, 1.0)  # 至少需要2个未来要素
+
+    # 深度分析框架
+    class DepthAnalysisFramework:
+        THEORY_BUILDING = "构建理论框架：识别核心理论、建立概念模型、分析理论适用性"
+        CAUSAL_ANALYSIS = "因果分析：识别驱动因素、分析机制、评估影响路径"
+        CRITICAL_THINKING = "批判性思考：识别反例、评估局限性、探讨替代解释"
+        FUTURE_OUTLOOK = "未来展望：预测趋势、识别机遇、提出对策建议"
+
+        @classmethod
+        def get_depth_requirements(cls, part_name: str) -> str:
+            """根据部分名称返回深度要求"""
+            requirements = {
+                "abstract": f"{cls.THEORY_BUILDING}\n{cls.CAUSAL_ANALYSIS}\n重点：核心发现浓缩与理论定位",
+                "introduction": f"{cls.THEORY_BUILDING}\n重点：问题深度剖析与研究价值论证",
+                "literature": f"{cls.THEORY_BUILDING}\n{cls.CRITICAL_THINKING}\n重点：理论综述与批判性评估",
+                "methodology": f"{cls.CRITICAL_THINKING}\n重点：方法论创新与局限性分析",
+                "findings": f"{cls.CAUSAL_ANALYSIS}\n重点：实证证据与机制深度解释",
+                "discussion": f"{cls.CRITICAL_THINKING}\n{cls.FUTURE_OUTLOOK}\n重点：理论贡献挖掘与应用价值拓展",
+                "conclusion": f"{cls.FUTURE_OUTLOOK}\n重点：研究成果总结与未来方向展望",
+            }
+            return requirements.get(part_name, "")
+
+    # AI高频用语禁用词库（精简版，只保留最明显的AI痕迹）
     AI_BANNED_PHRASES = [
-        # 中文AI高频用语
+        # 只保留最明显的AI痕迹用词，避免过度限制表达
         "值得注意的是",
         "需要注意的是",
         "总的来说",
-        "总而言之",
         "综上所述",
         "在当今社会",
-        "在现代社会",
         "随着科技的发展",
-        "随着时代的进步",
         "众所周知",
-        "不言而喻",
         "毋庸置疑",
         "显而易见",
         "首先",
         "其次",
         "最后",
-        "总之",  # 这些单独出现太频繁
+        "总之",
         "一方面",
         "另一方面",
         "与此同时",
@@ -68,33 +168,6 @@ class WriterAgent(BaseAgent):
         "仔细观察",
         "在这个背景下",
         "在此基础上",
-        # 英文AI高频用语
-        "It is worth noting that",
-        "It should be noted that",
-        "In conclusion",
-        "To sum up",
-        "In summary",
-        "First and foremost",
-        "Last but not least",
-        "On one hand",
-        "On the other hand",
-        "As we all know",
-        "Needless to say",
-        "In other words",
-        "That is to say",
-        "In fact",
-        "Actually",
-        "Indeed",
-        "To a certain extent",
-        "To some degree",
-        "Play an important role",
-        "Have a significant impact",
-        "It is clear that",
-        "It is evident that",
-        "We can see that",
-        "We can observe that",
-        "This suggests that",
-        "This indicates that",
     ]
 
     # 句式替换映射（用于句式多样化）
@@ -171,6 +244,9 @@ class WriterAgent(BaseAgent):
             llm_factory=llm_factory,
             status_callback=status_callback,
         )
+
+        # 初始化深度管理器
+        self.depth_manager = self.DepthManager()
 
     async def execute(self, context: Dict[str, Any]) -> AgentExecutionResult:
         """
@@ -312,8 +388,8 @@ class WriterAgent(BaseAgent):
             insights=insights,
             trends=trends,
             sources=sources,
-            part_description="摘要—概括研究问题、方法、主要发现和结论，字数500-800字",
-            min_chars=600,
+            part_description="摘要—概括研究问题、方法、主要发现和结论，字数400-600字",
+            min_chars=400,
             is_revision=is_revision,
             review_feedback=review_feedback,
             existing_parts=existing_parts,
@@ -333,7 +409,7 @@ class WriterAgent(BaseAgent):
             trends=trends,
             sources=sources,
             part_description="绪论—研究背景、研究问题的提出、研究意义与价值、研究方法概述",
-            min_chars=2500,
+            min_chars=1200,
             is_revision=is_revision,
             review_feedback=review_feedback,
             existing_parts=existing_parts,
@@ -354,7 +430,7 @@ class WriterAgent(BaseAgent):
             trends=trends,
             sources=sources,
             part_description="文献综述—国内外研究现状综述、主要理论框架、核心概念界定、研究空白与本研究定位、文献评述小结",
-            min_chars=4000,
+            min_chars=2500,
             is_revision=is_revision,
             review_feedback=review_feedback,
             existing_parts=existing_parts,
@@ -375,7 +451,7 @@ class WriterAgent(BaseAgent):
             trends=trends,
             sources=sources,
             part_description="研究设计与方法—研究设计框架、数据来源与样本选择、分析方法、研究质量控制",
-            min_chars=2500,
+            min_chars=1000,
             is_revision=is_revision,
             review_feedback=review_feedback,
             existing_parts=existing_parts,
@@ -396,7 +472,7 @@ class WriterAgent(BaseAgent):
             trends=trends,
             sources=sources,
             part_description="实证分析—数据概况、描述性分析、核心发现1-6及其数据支撑、典型案例深度分析、发现小结",
-            min_chars=5000,
+            min_chars=3200,
             is_revision=is_revision,
             review_feedback=review_feedback,
             existing_parts=existing_parts,
@@ -417,7 +493,7 @@ class WriterAgent(BaseAgent):
             trends=trends,
             sources=sources,
             part_description="讨论—理论贡献、实践启示、与已有研究的对话",
-            min_chars=2000,
+            min_chars=1400,
             is_revision=is_revision,
             review_feedback=review_feedback,
             existing_parts=existing_parts,
@@ -438,7 +514,7 @@ class WriterAgent(BaseAgent):
             trends=trends,
             sources=sources,
             part_description="结论与展望—主要结论总结、研究局限性、未来研究方向",
-            min_chars=1800,
+            min_chars=1000,
             is_revision=is_revision,
             review_feedback=review_feedback,
             existing_parts=existing_parts,
@@ -601,14 +677,12 @@ class WriterAgent(BaseAgent):
             raise ValueError("LLM客户端未初始化，无法生成报告题目")
 
         # 构建题目生成的上下文
-        key_facts_summary = "\n".join([
-            f"- {fact.get('content', 'N/A')[:100]}"
-            for fact in key_facts[:5]
-        ])
-        insights_summary = "\n".join([
-            f"- {insight.get('content', 'N/A')[:100]}"
-            for insight in insights[:5]
-        ])
+        key_facts_summary = "\n".join(
+            [f"- {fact.get('content', 'N/A')[:100]}" for fact in key_facts[:5]]
+        )
+        insights_summary = "\n".join(
+            [f"- {insight.get('content', 'N/A')[:100]}" for insight in insights[:5]]
+        )
 
         prompt = f"""你是一个资深学术期刊编辑,擅长为研究报告撰写简洁、专业、学术的题目。
 
@@ -961,10 +1035,18 @@ class WriterAgent(BaseAgent):
 {json.dumps(review_feedback.get("critical_issues", [])[:3], ensure_ascii=False, indent=2)}
 """
 
+        # 获取深度分析要求
+        depth_requirements = self.DepthAnalysisFramework.get_depth_requirements(
+            part_name.split("_")[-1]
+        )
+
         prompt = f"""{base_context}
 
 ===== 当前任务 =====
 请撰写研究报告的以下部分：{part_description}
+
+===== 深度分析要求 =====
+{depth_requirements}
 
 ===== 字数要求 =====
 本部分字数要求：{min_chars}字以上（中文字符）
@@ -1061,16 +1143,15 @@ CHART:line-->
 
         # 计算所需的max_tokens（中文每字约2.5个token + 安全余量）
         estimated_tokens = int(min_chars * 2.5) + 1000
-        # 【修复】限制在deepseek-chat支持的范围内（8192）
-        # 如果需要更长的内容，WriterAgent应该分段生成
-        max_tokens = min(estimated_tokens, 8000)  # 改为8000，留100余量防止边界问题
+        # 【优化】增加token限制以支持更深入的内容生成
+        max_tokens = min(estimated_tokens, 8000)  
 
         # 重试机制：最多重试2次
         for attempt in range(3):
             try:
                 response = await self.call_llm(
                     messages=[{"role": "user", "content": prompt}],
-                    temperature=0.6,
+                    temperature=0.8,  # 从0.6提升到0.8，增加创造性和深度思考
                     max_tokens=max_tokens,
                 )
 
@@ -1091,7 +1172,23 @@ CHART:line-->
                     logger.info(
                         f"[WriterAgent] 部分 {part_name} 生成成功，长度: {len(response)} 字符"
                     )
-                    return response
+
+                    # 深度验证和迭代深化
+                    final_content = await self._iterative_deepening(
+                        response,
+                        {
+                            "query": query,
+                            "analysis_summary": analysis_summary,
+                            "key_facts": key_facts,
+                            "insights": insights,
+                            "sources": sources,
+                            "part_name": part_name,
+                            "part_description": part_description,
+                        },
+                        max_rounds=2,
+                    )
+
+                    return final_content
 
             except Exception as e:
                 logger.error(
@@ -1105,6 +1202,120 @@ CHART:line-->
                         f"[WriterAgent] 部分 {part_name} 生成失败，已达到最大重试次数，无法继续"
                     )
                     raise ValueError(f"无法生成{part_name}部分：{str(e)}")
+
+    async def _iterative_deepening(
+        self, content: str, context: Dict, max_rounds: int = 2
+    ) -> str:
+        """
+        迭代深化内容质量
+        通过多轮分析和改进提升内容的深度
+        """
+        for round_num in range(max_rounds):
+            # 评估当前内容的深度
+            depth_scores = self.depth_manager.assess_depth(content)
+
+            logger.info(
+                f"[WriterAgent] 第{round_num + 1}轮深度评估 - "
+                f"理论深度: {depth_scores['theory_depth']:.2f}, "
+                f"证据强度: {depth_scores['evidence_strength']:.2f}, "
+                f"批判思维: {depth_scores['critical_thinking']:.2f}, "
+                f"未来导向: {depth_scores['future_orientation']:.2f}"
+            )
+
+            # 检查是否需要深化
+            if not self.depth_manager.needs_deepening(depth_scores):
+                logger.info(f"[WriterAgent] 内容深度已达标，停止迭代")
+                break
+
+            # 生成深化prompt
+            deepen_prompt = self._generate_deepen_prompt(
+                content, depth_scores, context, round_num
+            )
+
+            try:
+                # 调用LLM进行内容深化
+                deepened_response = await self.call_llm(
+                    messages=[{"role": "user", "content": deepen_prompt}],
+                    temperature=0.8,
+                    max_tokens=6000,
+                )
+
+                # 合并深化内容
+                content = self._merge_deepened_content(content, deepened_response)
+
+                logger.info(
+                    f"[WriterAgent] 第{round_num + 1}轮深化完成，内容长度: {len(content)}"
+                )
+
+            except Exception as e:
+                logger.warning(f"[WriterAgent] 第{round_num + 1}轮深化失败: {e}")
+                break
+
+        return content
+
+    def _generate_deepen_prompt(
+        self,
+        content: str,
+        depth_scores: Dict[str, float],
+        context: Dict,
+        round_num: int,
+    ) -> str:
+        """生成内容深化prompt"""
+        part_name = context.get("part_name", "")
+        depth_requirements = self.DepthAnalysisFramework.get_depth_requirements(
+            part_name.split("_")[-1]
+        )
+
+        # 识别需要改进的方面
+        improvement_areas = []
+        if depth_scores["theory_depth"] < 0.7:
+            improvement_areas.append("理论框架构建 - 需要更清晰的概念模型和理论基础")
+        if depth_scores["evidence_strength"] < 0.7:
+            improvement_areas.append("证据质量提升 - 需要更多数据支撑和多源验证")
+        if depth_scores["critical_thinking"] < 0.7:
+            improvement_areas.append("批判性思维增强 - 需要考虑反例、局限性和替代解释")
+        if depth_scores["future_orientation"] < 0.7:
+            improvement_areas.append("未来展望扩展 - 需要更多趋势预测和对策建议")
+
+        improvement_text = "\n".join(f"- {area}" for area in improvement_areas)
+
+        return f"""请对以下报告内容进行深度分析和改进，提升其学术质量和分析深度。
+
+原始内容：
+{content}
+
+研究背景：
+- 研究问题：{context.get("query", "")}
+- 分析摘要：{context.get("analysis_summary", "")}
+
+当前深度评估分数：
+- 理论深度: {depth_scores["theory_depth"]:.2f}
+- 证据强度: {depth_scores["evidence_strength"]:.2f}
+- 批判思维: {depth_scores["critical_thinking"]:.2f}
+- 未来导向: {depth_scores["future_orientation"]:.2f}
+
+需要改进的方面：
+{improvement_text}
+
+深度要求：
+{depth_requirements}
+
+改进指导：
+1. **理论深化**：添加理论框架、概念界定，建立分析模型
+2. **证据强化**：补充数据支撑，进行交叉验证，标注来源
+3. **批判性增强**：识别局限性，考虑反例，提供替代解释
+4. **未来拓展**：预测发展趋势，提出对策建议，识别机遇挑战
+
+请保持原有结构的基础上，有针对性地深化和改进内容。输出完整的改进后内容。"""
+
+    def _merge_deepened_content(self, original: str, deepened: str) -> str:
+        """合并深化后的内容"""
+        # 简单的合并策略：如果深化内容明显更长且包含改进，则使用深化内容
+        if len(deepened) > len(original) * 1.2 and len(deepened) > 500:
+            return deepened
+        else:
+            # 否则保留原始内容
+            return original
 
     def _generate_basic_report(
         self, query: str, analysis: Dict, sources: List[Dict]

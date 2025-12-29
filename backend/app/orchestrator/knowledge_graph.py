@@ -1,7 +1,5 @@
-"""
-知识图谱管理器
-小陈说：这是单一事实来源（Single Source of Truth），所有已确认的信息都存这里
-"""
+"""知识图谱管理器"""
+
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from dataclasses import dataclass, field
@@ -12,6 +10,7 @@ from app.core.logging import logger
 
 class NodeType(str, Enum):
     """知识节点类型"""
+
     FACT = "fact"  # 事实
     ENTITY = "entity"  # 实体
     RELATION = "relation"  # 关系
@@ -21,6 +20,7 @@ class NodeType(str, Enum):
 
 class VerificationStatus(str, Enum):
     """验证状态"""
+
     UNVERIFIED = "unverified"  # 未验证
     VERIFIED = "verified"  # 已验证
     CONFLICTING = "conflicting"  # 存在冲突
@@ -29,10 +29,8 @@ class VerificationStatus(str, Enum):
 
 @dataclass
 class KnowledgeNode:
-    """
-    知识图谱节点
-    小陈说：每个节点代表一条知识，必须有来源追踪
-    """
+    """知识图谱节点"""
+
     id: str
     node_type: NodeType
     content: str
@@ -61,7 +59,7 @@ class KnowledgeNode:
             "metadata": self.metadata,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
-            "version": self.version
+            "version": self.version,
         }
 
     @classmethod
@@ -72,15 +70,24 @@ class KnowledgeNode:
 
 
 class KnowledgeGraphManager:
-    """
-    知识图谱管理器
-    小陈说：管理所有已确认的知识，提供查询、验证、冲突检测等功能
-    """
+    """知识图谱管理器"""
 
     def __init__(self, task_id: int):
         self.task_id = task_id
         self.nodes: Dict[str, KnowledgeNode] = {}  # id -> node
         self.node_counter = 0
+
+        # 索引优化
+        self.content_index: Dict[str, List[str]] = {}  # word -> [node_ids]
+        self.type_index: Dict[NodeType, List[str]] = {}  # type -> [node_ids]
+        self.agent_index: Dict[str, List[str]] = {}  # agent -> [node_ids]
+        self.query_cache: Dict[str, List[str]] = {}  # query -> cached_results
+        self.index_stats = {
+            "total_nodes": 0,
+            "index_updates": 0,
+            "cache_hits": 0,
+            "cache_misses": 0,
+        }
 
         logger.info(f"[KnowledgeGraph] 初始化任务 {task_id} 的知识图谱")
 
@@ -97,12 +104,9 @@ class KnowledgeGraphManager:
         created_by_agent: str = "",
         confidence_score: float = 0.5,
         related_node_ids: List[str] = None,
-        metadata: Dict[str, Any] = None
+        metadata: Dict[str, Any] = None,
     ) -> KnowledgeNode:
-        """
-        添加知识节点
-        小陈说：每条新知识都要记录来源，不然就是在造谣
-        """
+        """添加知识节点"""
         node_id = self._generate_node_id()
         node = KnowledgeNode(
             id=node_id,
@@ -112,19 +116,64 @@ class KnowledgeGraphManager:
             created_by_agent=created_by_agent,
             confidence_score=confidence_score,
             related_node_ids=related_node_ids or [],
-            metadata=metadata or {}
+            metadata=metadata or {},
         )
 
         self.nodes[node_id] = node
-        logger.info(f"[KnowledgeGraph] 添加节点: {node_id}, type={node_type.value}, agent={created_by_agent}")
+
+        # 更新索引
+        self._update_indices(node)
+
+        self.index_stats["total_nodes"] += 1
+        logger.info(
+            f"[KnowledgeGraph] 添加节点: {node_id}, type={node_type.value}, agent={created_by_agent}"
+        )
 
         return node
+
+    def _update_indices(self, node: KnowledgeNode):
+        """更新所有索引"""
+        # 1. 内容索引 - 分词并建立倒排索引
+        self._update_content_index(node)
+
+        # 2. 类型索引
+        if node.node_type not in self.type_index:
+            self.type_index[node.node_type] = []
+        self.type_index[node.node_type].append(node.id)
+
+        # 3. Agent索引
+        if node.created_by_agent not in self.agent_index:
+            self.agent_index[node.created_by_agent] = []
+        self.agent_index[node.created_by_agent].append(node.id)
+
+        self.index_stats["index_updates"] += 1
+
+    def _update_content_index(self, node: KnowledgeNode):
+        """更新内容倒排索引"""
+        # 简单的中文分词（按标点和空格分割）
+        words = self._tokenize_content(node.content)
+
+        for word in words:
+            if word not in self.content_index:
+                self.content_index[word] = []
+            if node.id not in self.content_index[word]:
+                self.content_index[word].append(node.id)
+
+    def _tokenize_content(self, content: str) -> List[str]:
+        """简单的内容分词"""
+        import re
+
+        # 移除标点，分割成词
+        cleaned = re.sub(r"[^\w\s\u4e00-\u9fff]", "", content.lower())
+        return [word for word in cleaned.split() if len(word) > 1]
 
     def get_node(self, node_id: str) -> Optional[KnowledgeNode]:
         """获取节点"""
         return self.nodes.get(node_id)
 
-    def update_node(self, node_id: str, updates: Dict[str, Any]) -> Optional[KnowledgeNode]:
+    def update_node(
+        self, node_id: str, updates: Dict[str, Any]
+    ) -> Optional[KnowledgeNode]:
         """更新节点"""
         node = self.nodes.get(node_id)
         if not node:
@@ -142,10 +191,7 @@ class KnowledgeGraphManager:
         return node
 
     def verify_node(self, node_id: str, verifier_agent: str) -> bool:
-        """
-        验证节点
-        小陈说：被多个Agent验证的信息更可信
-        """
+        """验证节点"""
         node = self.nodes.get(node_id)
         if not node:
             return False
@@ -159,7 +205,9 @@ class KnowledgeGraphManager:
 
         node.updated_at = datetime.utcnow().isoformat()
 
-        logger.info(f"[KnowledgeGraph] 节点 {node_id} 被 {verifier_agent} 验证, count={node.verification_count}")
+        logger.info(
+            f"[KnowledgeGraph] 节点 {node_id} 被 {verifier_agent} 验证, count={node.verification_count}"
+        )
         return True
 
     def mark_conflicting(self, node_id: str, conflicting_node_id: str) -> None:
@@ -169,42 +217,72 @@ class KnowledgeGraphManager:
             node.verification_status = VerificationStatus.CONFLICTING
             if conflicting_node_id not in node.related_node_ids:
                 node.related_node_ids.append(conflicting_node_id)
-            logger.warning(f"[KnowledgeGraph] 节点 {node_id} 与 {conflicting_node_id} 冲突")
+            logger.warning(
+                f"[KnowledgeGraph] 节点 {node_id} 与 {conflicting_node_id} 冲突"
+            )
 
     def get_verified_facts(self) -> List[KnowledgeNode]:
-        """
-        获取所有已验证的事实
-        小陈说：只返回可信的信息给其他Agent
-        """
+        """获取所有已验证的事实"""
         return [
-            node for node in self.nodes.values()
+            node
+            for node in self.nodes.values()
             if node.verification_status == VerificationStatus.VERIFIED
         ]
 
     def get_facts_by_agent(self, agent_type: str) -> List[KnowledgeNode]:
         """获取某个Agent创建的所有节点"""
         return [
-            node for node in self.nodes.values()
-            if node.created_by_agent == agent_type
+            node for node in self.nodes.values() if node.created_by_agent == agent_type
         ]
 
     def get_high_confidence_nodes(self, threshold: float = 0.7) -> List[KnowledgeNode]:
         """获取高置信度节点"""
         return [
-            node for node in self.nodes.values()
-            if node.confidence_score >= threshold
+            node for node in self.nodes.values() if node.confidence_score >= threshold
         ]
 
     def search_nodes(self, keyword: str) -> List[KnowledgeNode]:
         """
-        搜索包含关键词的节点
-        小陈说：简单的关键词匹配，后面可以接向量搜索
+        搜索包含关键词的节点（索引优化版）
+        使用倒排索引进行高效查询
         """
+        # 检查缓存
+        cache_key = f"search_{keyword}"
+        if cache_key in self.query_cache:
+            self.index_stats["cache_hits"] += 1
+            node_ids = self.query_cache[cache_key]
+            return [self.nodes[nid] for nid in node_ids if nid in self.nodes]
+        else:
+            self.index_stats["cache_misses"] += 1
+
+        # 使用索引进行搜索
         keyword_lower = keyword.lower()
-        return [
-            node for node in self.nodes.values()
-            if keyword_lower in node.content.lower()
+        candidate_ids = set()
+
+        # 1. 使用内容索引查找候选节点
+        query_words = self._tokenize_content(keyword)
+        for word in query_words:
+            if word in self.content_index:
+                candidate_ids.update(self.content_index[word])
+
+        # 2. 如果没有找到候选，使用传统方法作为fallback
+        if not candidate_ids:
+            candidate_ids = {
+                node_id
+                for node_id, node in self.nodes.items()
+                if keyword_lower in node.content.lower()
+            }
+
+        # 3. 转换为节点列表
+        results = [
+            self.nodes[node_id] for node_id in candidate_ids if node_id in self.nodes
         ]
+
+        # 4. 更新缓存（限制缓存大小）
+        if len(self.query_cache) < 100:  # 最多缓存100个查询
+            self.query_cache[cache_key] = list(candidate_ids)
+
+        return results
 
     def get_related_nodes(self, node_id: str) -> List[KnowledgeNode]:
         """获取相关节点"""
@@ -212,16 +290,12 @@ class KnowledgeGraphManager:
         if not node:
             return []
 
-        return [
-            self.nodes[rid] for rid in node.related_node_ids
-            if rid in self.nodes
-        ]
+        return [self.nodes[rid] for rid in node.related_node_ids if rid in self.nodes]
 
-    def detect_conflicts(self, new_content: str, node_type: NodeType) -> List[KnowledgeNode]:
-        """
-        检测与新内容可能冲突的节点
-        小陈说：简单实现，后面可以用LLM来做语义冲突检测
-        """
+    def detect_conflicts(
+        self, new_content: str, node_type: NodeType
+    ) -> List[KnowledgeNode]:
+        """检测与新内容可能冲突的节点"""
         # 这里是简化实现，实际应该用语义相似度
         potential_conflicts = []
         for node in self.nodes.values():
@@ -236,10 +310,7 @@ class KnowledgeGraphManager:
         return potential_conflicts
 
     def export_for_context(self) -> Dict[str, Any]:
-        """
-        导出用于上下文的知识图谱摘要
-        小陈说：给Agent的上下文不需要全部节点，只要关键信息
-        """
+        """导出用于上下文的知识图谱摘要"""
         verified = self.get_verified_facts()
         high_confidence = self.get_high_confidence_nodes()
 
@@ -252,13 +323,13 @@ class KnowledgeGraphManager:
                 for n in verified[:20]  # 最多20条
             ],
             "key_entities": [
-                n.content for n in self.nodes.values()
-                if n.node_type == NodeType.ENTITY
+                n.content for n in self.nodes.values() if n.node_type == NodeType.ENTITY
             ][:10],
             "key_insights": [
-                n.content for n in self.nodes.values()
+                n.content
+                for n in self.nodes.values()
                 if n.node_type == NodeType.INSIGHT and n.confidence_score >= 0.6
-            ][:5]
+            ][:5],
         }
 
     def to_dict(self) -> Dict[str, Any]:
@@ -266,7 +337,7 @@ class KnowledgeGraphManager:
         return {
             "task_id": self.task_id,
             "node_counter": self.node_counter,
-            "nodes": {k: v.to_dict() for k, v in self.nodes.items()}
+            "nodes": {k: v.to_dict() for k, v in self.nodes.items()},
         }
 
     @classmethod
@@ -275,7 +346,6 @@ class KnowledgeGraphManager:
         manager = cls(task_id=data["task_id"])
         manager.node_counter = data["node_counter"]
         manager.nodes = {
-            k: KnowledgeNode.from_dict(v)
-            for k, v in data["nodes"].items()
+            k: KnowledgeNode.from_dict(v) for k, v in data["nodes"].items()
         }
         return manager

@@ -1,8 +1,4 @@
-"""
-数据库模型定义
-小陈出品，表结构清晰明了
-7个Agent + 中央协调器的完整数据模型
-"""
+"""数据库模型"""
 
 from datetime import datetime
 from typing import Optional
@@ -21,6 +17,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 import enum
 
 from app.db.database import Base
+import hashlib
+import json
 
 
 class TaskStatus(enum.Enum):
@@ -171,10 +169,7 @@ class Source(Base):
 
 
 class KnowledgeNode(Base):
-    """
-    知识图谱节点 - 单一事实来源
-    小陈说：这是中央协调器的核心数据结构，所有已确认的事实都存这里
-    """
+    """知识图谱节点"""
 
     __tablename__ = "knowledge_nodes"
 
@@ -227,10 +222,7 @@ class KnowledgeNode(Base):
 
 
 class ContextSnapshot(Base):
-    """
-    上下文快照 - 用于上下文版本控制和同步
-    小陈说：每次Agent执行前后都要记录上下文状态，方便追溯和同步
-    """
+    """上下文快照"""
 
     __tablename__ = "context_snapshots"
 
@@ -269,10 +261,7 @@ class ContextSnapshot(Base):
 
 
 class Chart(Base):
-    """
-    图表数据 - 存储研究报告中的图表信息
-    小陈说：为了让报告更直观，支持各种类型的图表展示
-    """
+    """图表数据"""
 
     __tablename__ = "charts"
 
@@ -309,3 +298,72 @@ class Chart(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     task: Mapped["ResearchTask"] = relationship("ResearchTask", back_populates="charts")
+
+
+class CacheEntry(Base):
+    """
+    缓存条目 - 用于缓存LLM响应、搜索结果等
+    支持TTL过期和访问统计
+    """
+
+    __tablename__ = "cache_entries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    # 缓存键和值
+    cache_key: Mapped[str] = mapped_column(
+        String(128), unique=True, index=True, comment="缓存键（MD5哈希值）"
+    )
+    cache_value: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True, comment="缓存值（JSON序列化）"
+    )
+
+    # 缓存类型和元数据
+    cache_type: Mapped[str] = mapped_column(
+        String(50),
+        index=True,
+        comment="缓存类型：llm_response/search_result/context/report_fragment",
+    )
+    cache_metadata: Mapped[Optional[dict]] = mapped_column(
+        JSON, nullable=True, comment="元数据，如原始查询参数、模型信息等"
+    )
+
+    # 时间管理
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+    expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True, comment="过期时间"
+    )
+
+    # 访问统计
+    access_count: Mapped[int] = mapped_column(Integer, default=0, comment="访问次数")
+    last_accessed: Mapped[Optional[datetime]] = mapped_column(
+        DateTime, nullable=True, comment="最后访问时间"
+    )
+
+    # 压缩和大小信息
+    is_compressed: Mapped[bool] = mapped_column(
+        Boolean, default=False, comment="是否已压缩"
+    )
+    value_size: Mapped[int] = mapped_column(
+        Integer, default=0, comment="原始值大小（字节）"
+    )
+
+    @classmethod
+    def generate_key(cls, content: str, cache_type: str = "") -> str:
+        """生成缓存键"""
+        key_content = f"{cache_type}:{content}"
+        return hashlib.md5(key_content.encode("utf-8")).hexdigest()
+
+    def is_expired(self) -> bool:
+        """检查是否过期"""
+        if self.expires_at is None:
+            return False
+        return datetime.utcnow() > self.expires_at
+
+    def touch(self):
+        """更新最后访问时间和访问计数"""
+        self.last_accessed = datetime.utcnow()
+        self.access_count += 1

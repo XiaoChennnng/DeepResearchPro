@@ -96,9 +96,21 @@ class ContextOrchestrator:
 
         # Agent消息队列
         self.message_queue: List[AgentMessage] = []
+        self.message_stats = {
+            "total_sent": 0,
+            "total_received": 0,
+            "avg_queue_size": 0.0,
+            "processing_efficiency": 1.0,
+        }
 
         # Agent执行历史
         self.execution_history: List[AgentExecutionResult] = []
+        self.execution_stats = {
+            "total_executions": 0,
+            "success_rate": 1.0,
+            "avg_duration": 0.0,
+            "error_rate": 0.0,
+        }
 
         # 当前活跃的Agent
         self.current_agent: Optional[str] = None
@@ -125,10 +137,7 @@ class ContextOrchestrator:
     # ========== 上下文对齐机制 ==========
 
     async def align_context_for_agent(self, agent_type: str) -> Dict[str, Any]:
-        """
-        为Agent对齐上下文
-        小陈说：每次Agent执行前都要调用这个，确保Agent有最新的上下文视图
-        """
+        """为Agent对齐上下文"""
         logger.info(f"[ContextOrchestrator] 为Agent '{agent_type}' 对齐上下文")
 
         # 1. 创建执行前快照
@@ -155,7 +164,6 @@ class ContextOrchestrator:
         extended_ctx = agent_context.get("extended_context", {}) or {}
 
         # 4.1 按阶段注入跨Agent共享数据
-        # 小陈说：后面的Agent要吃前面Agent的成果，不然就都在瞎忙活
 
         # 统一获取搜索和筛选后的来源
         searcher_ctx = self.context_manager.extended_contexts.get("searcher")
@@ -246,14 +254,47 @@ class ContextOrchestrator:
     async def sync_context_after_agent(
         self, agent_type: str, result: AgentExecutionResult
     ) -> None:
-        """
-        Agent执行后同步上下文
-        小陈说：Agent干完活后要把结果同步回来，不然其他Agent不知道
-        """
+        """Agent执行后同步上下文"""
         logger.info(f"[ContextOrchestrator] 同步Agent '{agent_type}' 的执行结果")
 
         # 1. 记录执行历史
         self.execution_history.append(result)
+
+        # 更新执行统计
+        self.execution_stats["total_executions"] += 1
+        duration = getattr(result, "duration_ms", 0)
+
+        # 更新平均执行时间
+        if self.execution_stats["total_executions"] > 1:
+            self.execution_stats["avg_duration"] = (
+                (
+                    self.execution_stats["avg_duration"]
+                    * (self.execution_stats["total_executions"] - 1)
+                )
+                + duration
+            ) / self.execution_stats["total_executions"]
+        else:
+            self.execution_stats["avg_duration"] = duration
+
+        # 更新成功率
+        successful = 1 if result.success else 0
+        self.execution_stats["success_rate"] = (
+            (
+                self.execution_stats["success_rate"]
+                * (self.execution_stats["total_executions"] - 1)
+            )
+            + successful
+        ) / self.execution_stats["total_executions"]
+
+        # 更新错误率
+        has_errors = 1 if result.errors else 0
+        self.execution_stats["error_rate"] = (
+            (
+                self.execution_stats["error_rate"]
+                * (self.execution_stats["total_executions"] - 1)
+            )
+            + has_errors
+        ) / self.execution_stats["total_executions"]
 
         # 2. 应用上下文变更
         if result.context_changes:
@@ -333,8 +374,20 @@ class ContextOrchestrator:
         if not inserted:
             self.message_queue.append(message)
 
+        # 更新统计信息
+        self.message_stats["total_sent"] += 1
+        queue_size = len(self.message_queue)
+        self.message_stats["avg_queue_size"] = (
+            (
+                self.message_stats["avg_queue_size"]
+                * (self.message_stats["total_sent"] - 1)
+            )
+            + queue_size
+        ) / self.message_stats["total_sent"]
+
         logger.debug(
-            f"[ContextOrchestrator] 消息入队: {message.from_agent} -> {message.to_agent}"
+            f"[ContextOrchestrator] 消息入队: {message.from_agent} -> {message.to_agent} "
+            f"(队列大小: {queue_size})"
         )
 
     def _get_messages_for_agent(self, agent_type: str) -> List[Dict[str, Any]]:
@@ -349,6 +402,16 @@ class ContextOrchestrator:
                 remaining.append(msg)
 
         self.message_queue = remaining
+
+        # 更新统计信息
+        received_count = len(messages)
+        self.message_stats["total_received"] += received_count
+
+        if self.message_stats["total_sent"] > 0:
+            self.message_stats["processing_efficiency"] = (
+                self.message_stats["total_received"] / self.message_stats["total_sent"]
+            )
+
         return messages
 
     def broadcast_message(
@@ -511,7 +574,7 @@ class ContextOrchestrator:
 
     # ========== 主流程控制 ==========
 
-    async def get_state_for_persistence(self) -> Dict[str, Any]:
+    def get_state_for_persistence(self) -> Dict[str, Any]:
         """
         获取可持久化的状态
         小陈说：要能保存和恢复状态，不然任务中断了就完蛋
@@ -537,6 +600,8 @@ class ContextOrchestrator:
             ],
             "summary_chain": self.context_manager.summary_chain,
             "global_errors": self.global_errors,
+            "message_stats": self.message_stats,
+            "execution_stats": self.execution_stats,
             "timestamp": datetime.utcnow().isoformat(),
         }
 
@@ -572,9 +637,42 @@ class ContextOrchestrator:
         # 恢复全局错误
         orchestrator.global_errors = state.get("global_errors", [])
 
+        # 恢复执行历史
+        for history_item in state.get("execution_history", []):
+            result = AgentExecutionResult(
+                agent_type=history_item.get("agent_type", ""),
+                success=history_item.get("success", False),
+                output=history_item.get("output", {}),  # 恢复完整output
+                errors=history_item.get("errors", []),
+                tokens_used=history_item.get("tokens_used", 0),
+                duration_ms=history_item.get("duration_ms", 0),
+                context_changes={},
+            )
+            orchestrator.execution_history.append(result)
+
+        # 恢复统计信息
+        orchestrator.message_stats = state.get(
+            "message_stats", orchestrator.message_stats
+        )
+        orchestrator.execution_stats = state.get(
+            "execution_stats", orchestrator.execution_stats
+        )
+
         logger.info(f"[ContextOrchestrator] 从状态恢复任务 {state['task_id']}")
 
         return orchestrator
+
+    def get_system_stats(self) -> Dict[str, Any]:
+        """获取系统统计信息"""
+        return {
+            "message_stats": self.message_stats.copy(),
+            "execution_stats": self.execution_stats.copy(),
+            "active_agents": len(self.execution_history),
+            "total_messages": len(self.message_queue),
+            "context_health": "good"
+            if self.execution_stats["error_rate"] < 0.1
+            else "warning",
+        }
 
     def get_research_plan(self) -> List[Dict[str, Any]]:
         """获取研究计划"""
