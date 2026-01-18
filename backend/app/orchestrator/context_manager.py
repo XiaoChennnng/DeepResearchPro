@@ -323,7 +323,7 @@ class ContextManager:
             # 普通列表直接截断
             return data[:keep_count]
 
-    def get_context_for_agent(self, agent_type: str) -> Dict[str, Any]:
+    def get_context_for_agent(self, agent_type: str, max_tokens: Optional[int] = None) -> Dict[str, Any]:
         """
         获取给Agent的完整上下文（智能压缩版）
         小陈说：这是Agent调用前必须拿到的数据包，现在会智能压缩
@@ -337,12 +337,13 @@ class ContextManager:
         )
         estimated_tokens = self.estimate_tokens(context_str)
 
-        total_limit = self.MAX_CORE_CONTEXT_TOKENS + self.MAX_EXTENDED_CONTEXT_TOKENS
+        # 如果指定了 max_tokens，则使用指定的限制；否则使用默认限制
+        total_limit = max_tokens or (self.MAX_CORE_CONTEXT_TOKENS + self.MAX_EXTENDED_CONTEXT_TOKENS)
 
         # 智能压缩逻辑
         if estimated_tokens > total_limit * self.SUMMARIZATION_THRESHOLD:
             logger.info(
-                f"[ContextManager] 上下文需要压缩 ({estimated_tokens} tokens)，开始智能压缩"
+                f"[ContextManager] 上下文需要压缩 ({estimated_tokens} tokens, limit={total_limit})，开始智能压缩"
             )
 
             compressed_core, compressed_extended = self._compress_context_for_agent(

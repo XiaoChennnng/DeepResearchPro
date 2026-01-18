@@ -374,158 +374,45 @@ class WriterAgent(BaseAgent):
         )
         logger.info(f"[WriterAgent] 报告题目生成完成: {report_title}")
 
-        # 优化版：7个部分（删除AI生成参考文献）
-        # 总计约22000字，分段避免token超限
+        # 获取动态报告结构
+        report_structure = core_context.get("report_structure", [])
+        if not report_structure:
+            logger.warning("[WriterAgent] 未找到动态报告结构，使用默认结构")
+            report_structure = self._get_default_structure()
+
         report_parts = []
-
-        # === 第1部分：摘要 ===
-        await self.update_subtask("正在撰写摘要...")
-        part1 = await self._generate_or_reuse_part(
-            part_name="part1_abstract",
-            query=query,
-            analysis_summary=analysis_summary,
-            key_facts=key_facts,
-            insights=insights,
-            trends=trends,
-            sources=sources,
-            part_description="摘要—概括研究问题、方法、主要发现和结论，字数400-600字",
-            min_chars=400,
-            is_revision=is_revision,
-            review_feedback=review_feedback,
-            existing_parts=existing_parts,
-            parts_need_revision=parts_need_revision,
-        )
-        report_parts.append(part1)
-        logger.info(f"[WriterAgent] 第1部分(摘要)完成，长度: {len(part1)} 字符")
-
-        # === 第2部分：绪论 ===
-        await self.update_subtask("正在撰写绪论...")
-        part2 = await self._generate_or_reuse_part(
-            part_name="part2_introduction",
-            query=query,
-            analysis_summary=analysis_summary,
-            key_facts=key_facts,
-            insights=insights,
-            trends=trends,
-            sources=sources,
-            part_description="绪论—研究背景、研究问题的提出、研究意义与价值、研究方法概述",
-            min_chars=1200,
-            is_revision=is_revision,
-            review_feedback=review_feedback,
-            existing_parts=existing_parts,
-            parts_need_revision=parts_need_revision,
-            previous_content=part1[-800:] if part1 else "",
-        )
-        report_parts.append(part2)
-        logger.info(f"[WriterAgent] 第2部分(绪论)完成，长度: {len(part2)} 字符")
-
-        # === 第3部分：文献综述 ===
-        await self.update_subtask("正在撰写文献综述...")
-        part3 = await self._generate_or_reuse_part(
-            part_name="part3_literature",
-            query=query,
-            analysis_summary=analysis_summary,
-            key_facts=key_facts,
-            insights=insights,
-            trends=trends,
-            sources=sources,
-            part_description="文献综述—国内外研究现状综述、主要理论框架、核心概念界定、研究空白与本研究定位、文献评述小结",
-            min_chars=2500,
-            is_revision=is_revision,
-            review_feedback=review_feedback,
-            existing_parts=existing_parts,
-            parts_need_revision=parts_need_revision,
-            previous_content=part2[-800:] if part2 else "",
-        )
-        report_parts.append(part3)
-        logger.info(f"[WriterAgent] 第3部分(文献综述)完成，长度: {len(part3)} 字符")
-
-        # === 第4部分：研究方法 ===
-        await self.update_subtask("正在撰写研究方法...")
-        part4 = await self._generate_or_reuse_part(
-            part_name="part4_methodology",
-            query=query,
-            analysis_summary=analysis_summary,
-            key_facts=key_facts,
-            insights=insights,
-            trends=trends,
-            sources=sources,
-            part_description="研究设计与方法—研究设计框架、数据来源与样本选择、分析方法、研究质量控制",
-            min_chars=1000,
-            is_revision=is_revision,
-            review_feedback=review_feedback,
-            existing_parts=existing_parts,
-            parts_need_revision=parts_need_revision,
-            previous_content=part3[-800:] if part3 else "",
-        )
-        report_parts.append(part4)
-        logger.info(f"[WriterAgent] 第4部分(研究方法)完成，长度: {len(part4)} 字符")
-
-        # === 第5部分：实证分析 ===
-        await self.update_subtask("正在撰写实证分析...")
-        part5 = await self._generate_or_reuse_part(
-            part_name="part5_findings",
-            query=query,
-            analysis_summary=analysis_summary,
-            key_facts=key_facts,
-            insights=insights,
-            trends=trends,
-            sources=sources,
-            part_description="实证分析—数据概况、描述性分析、核心发现1-6及其数据支撑、典型案例深度分析、发现小结",
-            min_chars=3200,
-            is_revision=is_revision,
-            review_feedback=review_feedback,
-            existing_parts=existing_parts,
-            parts_need_revision=parts_need_revision,
-            previous_content=part4[-800:] if part4 else "",
-        )
-        report_parts.append(part5)
-        logger.info(f"[WriterAgent] 第5部分(实证分析)完成，长度: {len(part5)} 字符")
-
-        # === 第6部分：讨论 ===
-        await self.update_subtask("正在撰写讨论...")
-        part6 = await self._generate_or_reuse_part(
-            part_name="part6_discussion",
-            query=query,
-            analysis_summary=analysis_summary,
-            key_facts=key_facts,
-            insights=insights,
-            trends=trends,
-            sources=sources,
-            part_description="讨论—理论贡献、实践启示、与已有研究的对话",
-            min_chars=1400,
-            is_revision=is_revision,
-            review_feedback=review_feedback,
-            existing_parts=existing_parts,
-            parts_need_revision=parts_need_revision,
-            previous_content=part5[-800:] if part5 else "",
-        )
-        report_parts.append(part6)
-        logger.info(f"[WriterAgent] 第6部分(讨论)完成，长度: {len(part6)} 字符")
-
-        # === 第7部分：结论与展望 ===
-        await self.update_subtask("正在撰写结论与展望...")
-        part7 = await self._generate_or_reuse_part(
-            part_name="part7_conclusion",
-            query=query,
-            analysis_summary=analysis_summary,
-            key_facts=key_facts,
-            insights=insights,
-            trends=trends,
-            sources=sources,
-            part_description="结论与展望—主要结论总结、研究局限性、未来研究方向",
-            min_chars=1000,
-            is_revision=is_revision,
-            review_feedback=review_feedback,
-            existing_parts=existing_parts,
-            parts_need_revision=parts_need_revision,
-            previous_content=part6[-800:] if part6 else "",
-        )
-        report_parts.append(part7)
-        logger.info(f"[WriterAgent] 第7部分(结论)完成，长度: {len(part7)} 字符")
-
-        # 注意：不再生成第8部分（参考文献）
-        # 参考文献直接由前端从task.sources数据渲染，避免AI生成错误
+        
+        # 遍历动态结构生成各部分
+        for idx, section in enumerate(report_structure):
+            title = section.get("title", f"第{idx+1}章")
+            description = section.get("description", "")
+            min_chars = section.get("min_words", 2000)
+            # 生成唯一的 part_name 标识
+            part_id = f"part{idx+1}_{title[:10]}"
+            
+            await self.update_subtask(f"正在撰写: {title}...")
+            
+            # 获取上一部分的内容作为上下文
+            previous_content = report_parts[-1][-800:] if report_parts else ""
+            
+            part_content = await self._generate_or_reuse_part(
+                part_name=part_id,
+                query=query,
+                analysis_summary=analysis_summary,
+                key_facts=key_facts,
+                insights=insights,
+                trends=trends,
+                sources=sources,
+                part_description=f"{title} — {description}",
+                min_chars=min_chars,
+                is_revision=is_revision,
+                review_feedback=review_feedback,
+                existing_parts=existing_parts,
+                parts_need_revision=parts_need_revision,
+                previous_content=previous_content,
+            )
+            report_parts.append(part_content)
+            logger.info(f"[WriterAgent] {title} 完成，长度: {len(part_content)} 字符")
 
         # 合并所有部分
         full_report = self._merge_report_parts(report_parts, report_title)
@@ -540,6 +427,46 @@ class WriterAgent(BaseAgent):
             )
 
         return full_report
+
+    def _get_default_structure(self) -> List[Dict]:
+        """获取默认的报告结构（后备方案）"""
+        return [
+            {
+                "title": "摘要",
+                "description": "概括研究问题、方法、主要发现和结论",
+                "min_words": 400
+            },
+            {
+                "title": "绪论",
+                "description": "研究背景、研究问题的提出、研究意义与价值、研究方法概述",
+                "min_words": 1200
+            },
+            {
+                "title": "文献综述",
+                "description": "国内外研究现状综述、主要理论框架、核心概念界定、研究空白与本研究定位、文献评述小结",
+                "min_words": 2500
+            },
+            {
+                "title": "研究设计与方法",
+                "description": "研究设计框架、数据来源与样本选择、分析方法、研究质量控制",
+                "min_words": 1000
+            },
+            {
+                "title": "实证分析",
+                "description": "数据概况、描述性分析、核心发现及其数据支撑、典型案例深度分析、发现小结",
+                "min_words": 3200
+            },
+            {
+                "title": "讨论",
+                "description": "理论贡献、实践启示、与已有研究的对话",
+                "min_words": 1400
+            },
+            {
+                "title": "结论与展望",
+                "description": "主要结论总结、研究局限性、未来研究方向",
+                "min_words": 1000
+            }
+        ]
 
     def _extract_parts_from_report(self, report: str) -> Dict[str, str]:
         """

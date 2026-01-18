@@ -66,7 +66,7 @@ class PlannerAgent(BaseAgent):
             await self.update_subtask("正在制定详细的研究计划")
 
             # 构建用户提示词
-            user_prompt = f"""请为以下研究问题制定详细的研究计划：
+            user_prompt = f"""请为以下研究问题制定详细的研究计划，并设计一份博士学位论文级别的报告结构：
 
 研究问题：{query}
 
@@ -85,16 +85,28 @@ class PlannerAgent(BaseAgent):
         }},
         ...
     ],
+    "report_structure": [
+        {{
+            "section_index": 1,
+            "title": "章节标题（如：绪论）",
+            "description": "本章的具体写作要求和涵盖内容...",
+            "min_words": 1000
+        }},
+        ...
+    ],
     "estimated_sources_needed": 10,
     "research_depth": "comprehensive/moderate/quick"
 }}
 
 要求：
-1. 计划必须全面覆盖研究问题的各个方面
-2. 每个步骤必须有明确的目标和预期产出
-3. 搜索查询必须精准且多样化
-4. 识别所有关键实体（人物、组织、概念、技术等）
-5. 列出所有约束条件（时间范围、地域限制、数据来源等）"""
+1. 【计划执行】计划必须全面覆盖研究问题的各个方面，步骤清晰可执行。
+2. 【搜索策略】搜索查询必须精准且多样化，识别所有关键实体。
+3. 【论文结构】设计一份符合**博士学位论文**标准的结构大纲：
+    - 结构必须逻辑严密，不仅仅是简单的"引言-正文-结论"，要根据具体研究问题定制章节标题。
+    - 必须包含：摘要、绪论（背景/意义/问题/方法）、文献综述（深度评述）、理论框架/研究设计、实证分析/核心发现（可拆分为多个章节）、讨论（深度分析/理论贡献/实践启示）、结论与展望。
+    - 每个章节的描述要具体，指导写作方向。
+    - 总字数规划应在 20,000 字以上。
+4. 【约束条件】列出所有约束条件（时间范围、地域限制、数据来源等）。"""
 
             # 调用LLM
             response = await self.call_llm(
@@ -162,6 +174,7 @@ class PlannerAgent(BaseAgent):
             context_changes = {
                 "core": {
                     "research_plan": plan_data.get("plan", []),
+                    "report_structure": plan_data.get("report_structure", []),
                     "key_entities": plan_data.get("key_entities", []),
                     "constraints": plan_data.get("constraints", []),
                 },

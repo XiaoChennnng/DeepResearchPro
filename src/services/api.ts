@@ -1,3 +1,5 @@
+import { getSupabaseClient } from './supabase'
+
 /**
  * API服务层
  */
@@ -12,8 +14,20 @@ async function request<T>(
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`
 
-  const defaultHeaders = {
+  const defaultHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
+  }
+
+  // 注入 Auth Token
+  try {
+    const { data } = await getSupabaseClient().auth.getSession()
+    if (data.session?.access_token) {
+      defaultHeaders['Authorization'] = `Bearer ${data.session.access_token}`
+    } else {
+      console.warn('[API] No session token available')
+    }
+  } catch (e) {
+    console.warn('[API] Failed to get session:', e)
   }
 
   try {
@@ -127,6 +141,10 @@ export interface ResearchTaskDetail extends ResearchTask {
   charts: Chart[]
 }
 
+export interface ResearchTitleResponse {
+  title: string
+}
+
 export interface AgentActivityMetrics {
   tokensUsed?: number
   apiCalls?: number
@@ -188,6 +206,11 @@ export async function createResearchTask(
 /** 获取研究任务详情 */
 export async function getResearchTask(taskId: number): Promise<ResearchTaskDetail> {
   return request<ResearchTaskDetail>(`/api/research/tasks/${taskId}`)
+}
+
+/** 获取研究任务AI生成标题 */
+export async function getResearchTitle(taskId: number): Promise<ResearchTitleResponse> {
+  return request<ResearchTitleResponse>(`/api/research/tasks/${taskId}/title`)
 }
 
 /** 暂停研究任务 */
@@ -295,7 +318,18 @@ export async function exportReport(
 
   const url = `/api/export/tasks/${taskId}/export/${format}?${queryParams}`
 
-  const response = await fetch(url)
+  const headers: Record<string, string> = {}
+  
+  try {
+    const { data } = await getSupabaseClient().auth.getSession()
+    if (data.session?.access_token) {
+      headers['Authorization'] = `Bearer ${data.session.access_token}`
+    }
+  } catch (e) {
+    console.warn('[API] Failed to get session for export:', e)
+  }
+
+  const response = await fetch(url, { headers })
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}))
     throw new Error(errorData.detail || `导出失败: ${response.status}`)

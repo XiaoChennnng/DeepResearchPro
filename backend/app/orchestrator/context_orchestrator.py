@@ -15,6 +15,7 @@ import asyncio
 import json
 
 from app.core.logging import logger
+from app.core.llm_factory import get_llm_factory
 from app.orchestrator.context_manager import (
     ContextManager,
     CoreContext,
@@ -146,7 +147,23 @@ class ContextOrchestrator:
         )
 
         # 2. 从知识图谱获取最新的已验证事实
-        verified_facts = self.knowledge_graph.get_verified_facts()
+        # 使用语义搜索获取与当前任务最相关的事实，而不是简单的列表截断
+        relevant_nodes = await self.knowledge_graph.semantic_search(self.query, k=50)
+        verified_facts = [
+            n for n in relevant_nodes 
+            if n.verification_status == VerificationStatus.VERIFIED 
+            and n.node_type == NodeType.FACT
+        ]
+        
+        # 如果语义搜索没找到足够的验证事实，回退到获取所有验证事实
+        if len(verified_facts) < 5:
+            all_verified = self.knowledge_graph.get_verified_facts()
+            # 避免重复
+            existing_ids = {n.id for n in verified_facts}
+            for n in all_verified:
+                if n.id not in existing_ids:
+                    verified_facts.append(n)
+        
         kg_summary = self.knowledge_graph.export_for_context()
 
         # 3. 更新核心上下文中的已验证事实
@@ -160,7 +177,19 @@ class ContextOrchestrator:
         )
 
         # 4. 获取Agent的基础上下文
-        agent_context = self.context_manager.get_context_for_agent(agent_type)
+        # 动态计算上下文限制
+        context_limit = None
+        try:
+            factory = get_llm_factory()
+            if factory.is_configured():
+                window_size = factory.get_context_window_size()
+                # 预留 20% 或 8000 token 给输出和系统提示词
+                reserved = max(8000, int(window_size * 0.2))
+                context_limit = max(4000, window_size - reserved)
+        except Exception as e:
+            logger.warning(f"[ContextOrchestrator] 获取动态上下文限制失败: {e}，使用默认限制")
+
+        agent_context = self.context_manager.get_context_for_agent(agent_type, max_tokens=context_limit)
         extended_ctx = agent_context.get("extended_context", {}) or {}
 
         # 4.1 按阶段注入跨Agent共享数据
@@ -332,7 +361,7 @@ class ContextOrchestrator:
         # 3. 处理Agent产生的知识节点
         if "knowledge_nodes" in result.output:
             for node_data in result.output["knowledge_nodes"]:
-                self.knowledge_graph.add_node(
+                await self.knowledge_graph.add_node(
                     node_type=NodeType(node_data.get("type", "fact")),
                     content=node_data["content"],
                     source_ids=node_data.get("source_ids", []),

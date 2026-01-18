@@ -4,8 +4,14 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 from dataclasses import dataclass, field
 from enum import Enum
+import asyncio
+
+import chromadb
+from chromadb.config import Settings as ChromaSettings
 
 from app.core.logging import logger
+from app.core.config import settings
+from app.core.embedding_service import embedding_service
 
 
 class NodeType(str, Enum):
@@ -88,15 +94,36 @@ class KnowledgeGraphManager:
             "cache_hits": 0,
             "cache_misses": 0,
         }
+        
+        # 初始化向量数据库
+        self.chroma_client = None
+        self.collection = None
+        self._init_vector_store()
 
         logger.info(f"[KnowledgeGraph] 初始化任务 {task_id} 的知识图谱")
+
+    def _init_vector_store(self):
+        """初始化向量存储"""
+        try:
+            # 使用配置中的持久化目录
+            persist_dir = f"{settings.CHROMA_PERSIST_DIR}/{self.task_id}"
+            self.chroma_client = chromadb.PersistentClient(path=persist_dir)
+            
+            # 创建或获取集合
+            self.collection = self.chroma_client.get_or_create_collection(
+                name=f"task_{self.task_id}_knowledge",
+                metadata={"hnsw:space": "cosine"}
+            )
+            logger.info(f"[KnowledgeGraph] 向量数据库初始化成功: {persist_dir}")
+        except Exception as e:
+            logger.warning(f"[KnowledgeGraph] 向量数据库初始化失败: {e}，将仅使用内存索引")
 
     def _generate_node_id(self) -> str:
         """生成唯一节点ID"""
         self.node_counter += 1
         return f"node_{self.task_id}_{self.node_counter}"
 
-    def add_node(
+    async def add_node(
         self,
         node_type: NodeType,
         content: str,
@@ -106,7 +133,7 @@ class KnowledgeGraphManager:
         related_node_ids: List[str] = None,
         metadata: Dict[str, Any] = None,
     ) -> KnowledgeNode:
-        """添加知识节点"""
+        """添加知识节点 (异步版)"""
         node_id = self._generate_node_id()
         node = KnowledgeNode(
             id=node_id,
@@ -121,8 +148,11 @@ class KnowledgeGraphManager:
 
         self.nodes[node_id] = node
 
-        # 更新索引
+        # 更新内存索引
         self._update_indices(node)
+        
+        # 更新向量索引
+        await self._update_vector_index(node)
 
         self.index_stats["total_nodes"] += 1
         logger.info(
@@ -130,6 +160,32 @@ class KnowledgeGraphManager:
         )
 
         return node
+
+    async def _update_vector_index(self, node: KnowledgeNode):
+        """更新向量索引"""
+        if not self.collection:
+            return
+
+        try:
+            # 生成向量
+            embedding = await embedding_service.embed_query(node.content)
+            if not embedding:
+                return
+
+            # 存储到Chroma
+            self.collection.add(
+                ids=[node.id],
+                embeddings=[embedding],
+                documents=[node.content],
+                metadatas=[{
+                    "type": node.node_type.value,
+                    "agent": node.created_by_agent,
+                    "confidence": node.confidence_score,
+                    "verification_status": node.verification_status.value
+                }]
+            )
+        except Exception as e:
+            logger.error(f"[KnowledgeGraph] 向量索引更新失败: {e}")
 
     def _update_indices(self, node: KnowledgeNode):
         """更新所有索引"""
@@ -202,6 +258,21 @@ class KnowledgeGraphManager:
         if node.verification_count >= 2:
             node.verification_status = VerificationStatus.VERIFIED
             node.confidence_score = min(1.0, node.confidence_score + 0.2)
+            
+            # 更新向量库中的元数据
+            if self.collection:
+                try:
+                    self.collection.update(
+                        ids=[node_id],
+                        metadatas=[{
+                            "type": node.node_type.value,
+                            "agent": node.created_by_agent,
+                            "confidence": node.confidence_score,
+                            "verification_status": node.verification_status.value
+                        }]
+                    )
+                except Exception as e:
+                    logger.warning(f"[KnowledgeGraph] 向量库元数据更新失败: {e}")
 
         node.updated_at = datetime.utcnow().isoformat()
 
@@ -283,6 +354,46 @@ class KnowledgeGraphManager:
             self.query_cache[cache_key] = list(candidate_ids)
 
         return results
+        
+    async def semantic_search(self, query: str, k: int = 10, threshold: float = 0.3) -> List[KnowledgeNode]:
+        """
+        语义搜索 (RAG核心)
+        """
+        if not self.collection:
+            logger.warning("[KnowledgeGraph] 向量库未初始化，回退到关键词搜索")
+            return self.search_nodes(query)[:k]
+            
+        try:
+            # 生成查询向量
+            embedding = await embedding_service.embed_query(query)
+            if not embedding:
+                return self.search_nodes(query)[:k]
+                
+            # 向量检索
+            results = self.collection.query(
+                query_embeddings=[embedding],
+                n_results=k
+            )
+            
+            nodes = []
+            if results["ids"] and results["distances"]:
+                ids = results["ids"][0]
+                distances = results["distances"][0]
+                
+                for i, node_id in enumerate(ids):
+                    # Chroma 默认返回距离，需要转换成相似度或直接用距离阈值
+                    # 这里假设距离越小越相似
+                    if distances[i] > (1 - threshold): # 简单阈值过滤
+                         continue
+                         
+                    if node_id in self.nodes:
+                        nodes.append(self.nodes[node_id])
+                        
+            return nodes
+            
+        except Exception as e:
+            logger.error(f"[KnowledgeGraph] 语义搜索失败: {e}")
+            return self.search_nodes(query)[:k]
 
     def get_related_nodes(self, node_id: str) -> List[KnowledgeNode]:
         """获取相关节点"""
@@ -348,4 +459,5 @@ class KnowledgeGraphManager:
         manager.nodes = {
             k: KnowledgeNode.from_dict(v) for k, v in data["nodes"].items()
         }
+        # 恢复时也应该重建/加载向量索引，这里暂略，假设重新add_node时会建立
         return manager

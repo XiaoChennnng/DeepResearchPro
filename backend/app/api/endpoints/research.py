@@ -24,6 +24,7 @@ from app.schemas.research import (
 )
 from app.services.research_service import ResearchService
 from app.core.logging import logger
+from app.api.deps import get_current_user
 
 router = APIRouter()
 
@@ -42,11 +43,16 @@ class ReportQAResponse(BaseModel):
     answer: str
 
 
+class TitleResponse(BaseModel):
+    title: str
+
+
 @router.post("/tasks", response_model=ResearchTaskResponse)
 async def create_research_task(
     task_data: ResearchTaskCreate,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     创建新的研究任务
@@ -75,6 +81,7 @@ async def list_research_tasks(
     limit: int = Query(20, ge=1, le=100),
     status: Optional[TaskStatus] = None,
     db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     获取研究任务列表
@@ -164,7 +171,11 @@ async def list_research_tasks(
 
 
 @router.get("/tasks/{task_id}", response_model=ResearchTaskDetailResponse)
-async def get_research_task(task_id: int, db: AsyncSession = Depends(get_db)):
+async def get_research_task(
+    task_id: int, 
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
     """
     获取研究任务详情
     包括计划树、来源列表、最近日志
@@ -211,7 +222,10 @@ async def get_research_task(task_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.patch("/tasks/{task_id}", response_model=ResearchTaskResponse)
 async def update_research_task(
-    task_id: int, update_data: ResearchTaskUpdate, db: AsyncSession = Depends(get_db)
+    task_id: int, 
+    update_data: ResearchTaskUpdate, 
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     更新研究任务状态
@@ -280,7 +294,10 @@ async def pause_research_task(task_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.post("/tasks/{task_id}/resume")
 async def resume_research_task(
-    task_id: int, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)
+    task_id: int, 
+    background_tasks: BackgroundTasks, 
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
     """继续研究任务"""
     query = select(ResearchTask).filter(ResearchTask.id == task_id)
@@ -328,7 +345,10 @@ async def get_agent_activity(task_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.post("/tasks/{task_id}/qa", response_model=ReportQAResponse)
 async def ask_report_question(
-    task_id: int, payload: ReportQARequest, db: AsyncSession = Depends(get_db)
+    task_id: int, 
+    payload: ReportQARequest, 
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
     query = (
         select(ResearchTask)
@@ -435,3 +455,83 @@ async def ask_report_question(
     except Exception as e:
         logger.error(f"报告追问失败 task_id={task_id}: {e}")
         raise HTTPException(status_code=500, detail="生成回答失败，请稍后重试")
+
+
+@router.get("/tasks/{task_id}/title", response_model=TitleResponse)
+async def generate_task_title(
+    task_id: int, 
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    query = select(ResearchTask).filter(ResearchTask.id == task_id)
+    result = await db.execute(query)
+    task = result.scalar_one_or_none()
+
+    if not task:
+        raise HTTPException(status_code=404, detail="研究任务不存在")
+
+    research_query = (task.query or "").strip()
+    if not research_query:
+        raise HTTPException(status_code=400, detail="任务缺少研究问题，无法生成标题")
+
+    llm_config = settings.get_llm_config()
+    api_key = llm_config.get("api_key")
+    provider = llm_config.get("provider", "openai")
+
+    if not api_key or api_key == "your-api-key-here":
+        task.status = TaskStatus.FAILED
+        await db.commit()
+        raise HTTPException(
+            status_code=400, detail="未配置LLM API Key，无法生成研究标题，任务已标记为失败"
+        )
+
+    prompt = f"""你是一个资深学术期刊编辑，擅长为研究报告撰写简洁、专业的中文标题。
+
+请根据下面的研究需求，总结一个合适的标题。
+
+【研究需求】
+{research_query}
+
+【标题要求】
+1. 使用中文。
+2. 控制在20个汉字以内，尽量简洁。
+3. 概括研究核心主题，避免空泛表达，如“关于……的研究”。
+4. 不要包含引号、编号或多余说明。
+
+只输出标题本身。
+"""
+
+    try:
+        factory = configure_llm(
+            provider=provider,
+            api_key=api_key,
+            base_url=llm_config.get("base_url"),
+            model=llm_config.get("model"),
+        )
+        client = factory.get_client()
+        model = factory.get_model()
+
+        resp = await client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.5,
+            max_tokens=64,
+        )
+
+        content = (resp.choices[0].message.content or "").strip()
+        if not content:
+            raise ValueError("LLM返回空标题")
+
+        title = content.strip().strip("\"").strip("'")
+        if len(title) > 30:
+            title = title[:30]
+
+        if len(title) < 2:
+            raise ValueError("生成的标题过短")
+
+        return TitleResponse(title=title)
+    except Exception as e:
+        logger.error(f"生成研究标题失败 task_id={task_id}: {e}")
+        task.status = TaskStatus.FAILED
+        await db.commit()
+        raise HTTPException(status_code=500, detail="生成研究标题失败，任务已标记为失败")

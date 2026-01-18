@@ -168,6 +168,51 @@ PROVIDER_CONFIGS: Dict[LLMProvider, Dict[str, Any]] = {
     },
 }
 
+# 模型上下文窗口大小映射（保守估计）
+CONTEXT_WINDOW_SIZES = {
+    # OpenAI
+    "gpt-4o": 128000,
+    "gpt-4o-mini": 128000,
+    "gpt-4-turbo": 128000,
+    "gpt-3.5-turbo": 16000,
+    "o1": 128000,
+    "o1-mini": 128000,
+    
+    # Anthropic
+    "claude-3-5-sonnet-20241022": 200000,
+    "claude-3-opus-20240229": 200000,
+    "claude-3-haiku-20240307": 200000,
+    
+    # Google
+    "gemini-1.5-pro": 1000000,
+    "gemini-1.5-flash": 1000000,
+    
+    # Qwen
+    "qwen-plus": 30000,
+    "qwen-max": 30000,
+    "qwen-turbo": 8000,
+    "qwen-long": 1000000,
+    
+    # Zhipu
+    "glm-4": 128000,
+    "glm-4-flash": 128000,
+    "glm-4-plus": 128000,
+    "glm-4-long": 1000000,
+    
+    # Moonshot
+    "moonshot-v1-8k": 8000,
+    "moonshot-v1-32k": 32000,
+    "moonshot-v1-128k": 128000,
+    
+    # DeepSeek
+    "deepseek-chat": 32000,
+    "deepseek-reasoner": 32000,
+    
+    # Yi
+    "yi-large": 32000,
+    "yi-medium": 16000,
+}
+
 
 class LLMFactory:
     """
@@ -279,6 +324,12 @@ class LLMFactory:
     def is_configured(self) -> bool:
         """检查是否已配置"""
         return self._client is not None and self._config is not None
+
+    def get_context_window_size(self, model: Optional[str] = None) -> int:
+        """获取模型的上下文窗口大小"""
+        target_model = model or (self._config.model if self._config else "gpt-4o-mini")
+        # 默认 8k
+        return CONTEXT_WINDOW_SIZES.get(target_model, 8192)
 
     @staticmethod
     def get_supported_providers() -> List[Dict[str, Any]]:

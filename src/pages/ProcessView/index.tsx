@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useParams, useLocation, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import {
   Play,
   Pause,
@@ -38,6 +38,7 @@ import {
   pauseResearchTask,
   resumeResearchTask,
   createWebSocket,
+  getResearchTitle,
   type PlanItem as ApiPlanItem,
   type Source as ApiSource,
   type AgentLog as ApiAgentLog,
@@ -411,7 +412,6 @@ function AgentDetailCard({ activity, isExpanded, onToggle }: {
 
 export default function ProcessView() {
   const { taskId } = useParams<{ taskId: string }>()
-  const location = useLocation()
   const navigate = useNavigate()
   const numericTaskId = taskId ? Number(taskId) : NaN
   const [currentStage, setCurrentStage] = useState(0)
@@ -453,9 +453,8 @@ export default function ProcessView() {
 
   const totalPlanTasks = plan.reduce((sum, item) => sum + 1 + item.children.length, 0)
 
-  const [query, setQuery] = useState(
-    (location.state as { query?: string } | null)?.query || ''
-  )
+  const [title, setTitle] = useState('')
+  const [titleError, setTitleError] = useState<string | null>(null)
 
   // 当开始新任务时，清空旧的localStorage数据和state，防止显示过期的示例数据
   useEffect(() => {
@@ -468,7 +467,7 @@ export default function ProcessView() {
       setPlan([])
       setDataItems([])
       setAgentActivities([])
-      setQuery('')
+      setTitle('')
       setLogs([])
       setCurrentStage(0)
       setProgress(0)
@@ -751,8 +750,6 @@ export default function ProcessView() {
         ])
 
         if (cancelled) return
-
-        setQuery(taskDetail.query)
         setProgress(taskDetail.progress || 0)
         setCurrentStage(mapStatusToStage(taskDetail.status))
         setIsPaused(taskDetail.status === 'paused')
@@ -803,6 +800,19 @@ export default function ProcessView() {
         })
 
         setLogs(buildLogsFromApi(taskDetail.recent_logs as unknown as ApiAgentLog[]))
+
+        try {
+          const titleResp = await getResearchTitle(numericTaskId)
+          if (!cancelled && titleResp && titleResp.title) {
+            setTitle(titleResp.title)
+            setTitleError(null)
+          }
+        } catch (error) {
+          console.error('获取研究标题失败:', error)
+          setTitle('')
+          const message = error instanceof Error ? error.message : '生成研究标题失败'
+          setTitleError(message)
+        }
 
         // 合并Agent活动状态，保留WebSocket更新的实时数据（tokens, apiCalls, currentAction等）
         const apiAgents = buildAgentsFromApi(agentActivity.agents)
@@ -1649,7 +1659,9 @@ export default function ProcessView() {
               ) : (
                 <CheckCircle2 className="h-4 w-4 text-green-500" />
               )}
-              <h1 className="font-medium truncate">{query}</h1>
+              <h1 className="font-medium truncate">
+                {title || (titleError ? '标题生成失败' : '正在生成标题...')}
+              </h1>
             </div>
             <span className="text-sm font-mono text-primary">
               {isLoading ? '...' : `${Math.round(headerProgress)}%`}

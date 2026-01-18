@@ -15,7 +15,8 @@ from app.db.models import AgentType
 from app.core.logging import logger
 from app.orchestrator.context_orchestrator import AgentExecutionResult
 from app.api.endpoints.websocket import get_ws_manager
-
+from app.core.embedding_service import embedding_service
+import numpy as np
 
 class SearcherAgent(BaseAgent):
     """
@@ -907,6 +908,10 @@ class SearcherAgent(BaseAgent):
         if not sources:
             return []
 
+        # 0. 先进行语义向量过滤 (新增优化)
+        # 这可以大幅减少送给LLM的垃圾信息，节省Token并提高相关性
+        sources = await self._semantic_filter_sources(sources, query, threshold=0.35)
+
         # 分批评估（避免超出token限制）
         batch_size = 8
         all_evaluated = []
@@ -931,6 +936,70 @@ class SearcherAgent(BaseAgent):
             filtered = all_evaluated[:3]
 
         return filtered
+
+    async def _semantic_filter_sources(self, sources: List[Dict], query: str, threshold: float = 0.35) -> List[Dict]:
+        """
+        使用向量相似度进行语义过滤
+        """
+        if not sources:
+            return []
+            
+        try:
+            # 1. 生成查询向量
+            query_embedding = await embedding_service.embed_query(query)
+            if not query_embedding:
+                logger.warning("[SearcherAgent] 查询向量生成失败，跳过语义过滤")
+                return sources
+
+            # 2. 准备源文本 (标题 + 内容摘要)
+            texts = [
+                f"{s.get('title', '')} {s.get('content', '')[:300]}" 
+                for s in sources
+            ]
+            
+            # 3. 批量生成源向量
+            source_embeddings = await embedding_service.embed_documents(texts)
+            if not source_embeddings or len(source_embeddings) != len(sources):
+                logger.warning("[SearcherAgent] 源向量生成失败，跳过语义过滤")
+                return sources
+
+            # 4. 计算余弦相似度
+            filtered_sources = []
+            
+            # 简单的余弦相似度计算
+            def cosine_similarity(v1, v2):
+                dot_product = sum(a*b for a,b in zip(v1, v2))
+                norm_v1 = sum(a*a for a in v1) ** 0.5
+                norm_v2 = sum(b*b for b in v2) ** 0.5
+                if norm_v1 == 0 or norm_v2 == 0:
+                    return 0.0
+                return dot_product / (norm_v1 * norm_v2)
+
+            for i, source in enumerate(sources):
+                sim = cosine_similarity(query_embedding, source_embeddings[i])
+                source["semantic_score"] = sim
+                
+                # 记录语义分数供调试
+                logger.debug(f"[SearcherAgent] Source: {source.get('title')[:20]}... Score: {sim:.3f}")
+                
+                if sim >= threshold:
+                    filtered_sources.append(source)
+            
+            # 至少保留前5个 (语义过滤可能太严格，作为预筛选可以放宽一点，或者保留Top N)
+            if len(filtered_sources) < 5 and len(sources) >= 5:
+                # 按语义分数排序
+                sources_sorted = sorted(sources, key=lambda x: x.get("semantic_score", 0), reverse=True)
+                filtered_sources = sources_sorted[:5]
+            elif not filtered_sources:
+                 filtered_sources = sources[:5] # 如果都过滤掉了，保留前5个
+
+            logger.info(f"[SearcherAgent] 语义过滤: {len(sources)} -> {len(filtered_sources)} (threshold={threshold})")
+            return filtered_sources
+
+        except Exception as e:
+            logger.error(f"[SearcherAgent] 语义过滤出错: {e}")
+            return sources
+
 
     async def _evaluate_batch(self, sources: List[Dict], query: str) -> List[Dict]:
         """评估一批来源的相关性（带增强错误处理）"""

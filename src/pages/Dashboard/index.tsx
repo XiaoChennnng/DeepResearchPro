@@ -43,6 +43,7 @@ export default function Dashboard() {
 
   // 开始新的研究任务
   const handleStartResearch = async () => {
+    console.log('Starting research with query:', query)
     if (!query.trim()) return
 
     try {

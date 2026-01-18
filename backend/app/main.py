@@ -70,6 +70,18 @@ def create_app() -> FastAPI:
             },
         )
 
+    # 请求日志中间件
+    @app.middleware("http")
+    async def log_requests(request: Request, call_next):
+        logger.info(f"[Request] {request.method} {request.url}")
+        try:
+            response = await call_next(request)
+            logger.info(f"[Response] {response.status_code}")
+            return response
+        except Exception as e:
+            logger.error(f"[Request Failed] {e}")
+            raise e
+
     # CORS中间件配置
     app.add_middleware(
         CORSMiddleware,

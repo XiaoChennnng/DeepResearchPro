@@ -27,6 +27,7 @@ import {
   getResearchTask,
   exportReport,
   askReportQuestion,
+  getResearchTitle,
   type ResearchTaskDetail,
   type ReportQAHistoryItem,
 } from '@/services/api'
@@ -115,6 +116,8 @@ export default function ReportView() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [task, setTask] = useState<ResearchTaskDetail | null>(null)
+  const [title, setTitle] = useState('')
+  const [titleError, setTitleError] = useState<string | null>(null)
   const [toc, setToc] = useState<TocItem[]>([])
   const scrollContainerRef = useRef<HTMLDivElement>(null)
 
@@ -224,6 +227,21 @@ export default function ReportView() {
         if (cancelled) return
 
         setTask(detail)
+        setTitle('')
+        setTitleError(null)
+
+        try {
+          const resp = await getResearchTitle(id)
+          if (!cancelled && resp && resp.title) {
+            setTitle(resp.title)
+            setTitleError(null)
+          }
+        } catch (e) {
+          console.error('获取研究标题失败:', e)
+          setTitle('')
+          const message = e instanceof Error ? e.message : '生成研究标题失败'
+          setTitleError(message)
+        }
 
         if (detail.report_content) {
           const generatedToc = buildTocFromMarkdown(detail.report_content)
@@ -307,7 +325,7 @@ export default function ReportView() {
         {/* Top Action Bar */}
         <div className="border-b px-6 py-3 flex items-center justify-between bg-background">
           <h1 className="font-semibold truncate flex-1 mr-4">
-            {task?.query || '研究报告'}
+            {title || (titleError ? '标题生成失败' : '报告标题生成中...')}
           </h1>
           <div className="flex items-center gap-2">
             <DropdownMenu>
